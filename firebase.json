@@ -1,0 +1,25 @@
+{
+  "hosting": [
+    {
+      "site": "obroh",
+      "public": "firebase-hosting-public",
+      "rewrites": [
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "obroh-website",
+            "region": "us-central1"
+          }
+        }
+      ],
+      "predeploy": [
+        "npm run guard:deploy"
+      ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ]
+    }
+  ]
+}

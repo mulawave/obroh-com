@@ -1,0 +1,30 @@
+{
+  "name": "obroh-com-dev",
+  "version": "1.0.0",
+  "description": "Development starter for Obroh.com full-stack application",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./start-dev.ps1",
+    "dev:bash": "bash ./start-dev.sh",
+    "stop": "bash ./stop-dev.sh",
+    "deploy:prod": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy/deploy.ps1 -Service all -Force",
+    "deploy:prod:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy/deploy.ps1 -Service all -Validate -Force",
+    "guard:deploy": "node ./scripts/validate-deploy-boundary.mjs",
+    "guard:deploy:env": "node ./scripts/validate-deploy-boundary.mjs --env",
+    "deploy:hosting:obroh": "npm run guard:deploy && firebase deploy --config firebase.json --only hosting",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:website": "cd website && npm run dev",
+    "dev:admin": "cd admin && npm run dev"
+  },
+  "keywords": [
+    "obroh",
+    "ancestry",
+    "family",
+    "development"
+  ],
+  "author": "Richard Obroh Jr",
+  "license": "Private",
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "prisma": "^7.8.0"
+  }
+}

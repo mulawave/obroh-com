@@ -1,0 +1,46 @@
+{
+  "schema": "obroh.deploy.pipeline.v1",
+  "description": "Locked single-source deployment pipeline manifest. Changes require explicit owner approval.",
+  "files": [
+    {
+      "path": "scripts/deploy/deploy.ps1",
+      "sha256": "8698840751a8a20100ca1d125aa0ca240daca7a6bb6fa491e1fce92b76e3ad86"
+    },
+    {
+      "path": "scripts/deploy/services/backend.ps1",
+      "sha256": "21c4b352031558ce0c71e6755855155b5b851cd756d9c16dd232dbdb8b21acf1"
+    },
+    {
+      "path": "scripts/deploy/services/website.ps1",
+      "sha256": "dd9b5a60efa7b902076f0b0b9837dd0e190295675fdf70f51131436db2718fa5"
+    },
+    {
+      "path": "scripts/deploy/services/admin.ps1",
+      "sha256": "6289bbbacbdeebed20740422adaec6d751a502c09fcb4a785d2c7c8d910ab020"
+    },
+    {
+      "path": "scripts/deploy/utils/config.ps1",
+      "sha256": "2bee0af3cb23fd2118f205dab6c9a1bfa1393441da174261b57330fbc43213d9"
+    },
+    {
+      "path": "scripts/deploy/utils/validation.ps1",
+      "sha256": "7086e5b458d0d2e359b142e37ce17f696ddb578a461e6b5eea314118ca41fbd8"
+    },
+    {
+      "path": "scripts/deploy/utils/logging.ps1",
+      "sha256": "96665a703a01f67339454c0c641bd40cc0d1cc2a0645eaec53e496be317db80e"
+    },
+    {
+      "path": "backend/cloudbuild.yaml",
+      "sha256": "ca4e02022dc90820389600e8446cc1995a831fdd72a731d8d2e741d1e8063a99"
+    },
+    {
+      "path": "website/cloudbuild.yaml",
+      "sha256": "c9d8cb9f70a155ef001ffbce38e784cad462a6a3dd6113bf465177a24f2b29cc"
+    },
+    {
+      "path": "admin/cloudbuild.yaml",
+      "sha256": "283750cafd2a399e411952c2b9a26c4e7867fbefee52c111170385344b618b5c"
+    }
+  ]
+}

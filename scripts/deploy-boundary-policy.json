@@ -1,0 +1,81 @@
+{
+  "repoName": "obroh",
+  "sharedFirebaseProjects": [
+    "raven-ai-6ff76"
+  ],
+  "allowedFirebaseConfigs": [
+    "firebase.json"
+  ],
+  "allowedHostingSites": [
+    "obroh"
+  ],
+  "allowedHostingPublicDirs": [
+    "firebase-hosting-public"
+  ],
+  "requiredPredeployCommand": "npm run guard:deploy",
+  "forbiddenNamespaces": [
+    "afrovision"
+  ],
+  "repoScanFiles": [
+    ".github/workflows/deploy.yml",
+    "backend/deploy-env.yaml",
+    "backend/.env.example",
+    "firebase.json",
+    "package.json"
+  ],
+  "envRules": {
+    "PROJECT_ID": {
+      "allowedExact": [
+        "raven-ai-6ff76"
+      ]
+    },
+    "BACKEND_SERVICE": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    },
+    "WEBSITE_SERVICE": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    },
+    "ADMIN_SERVICE": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    },
+    "BACKEND_API_URL": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    },
+    "GCS_BUCKET": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    },
+    "RUNTIME_SERVICE_ACCOUNT": {
+      "mustContainAny": [
+        "obroh"
+      ],
+      "mustNotContain": [
+        "afrovision"
+      ]
+    }
+  }
+}

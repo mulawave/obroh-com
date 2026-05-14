@@ -1,0 +1,167 @@
+name: Manual Cloud Run Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_target:
+        description: 'Type DEPLOY_OBROH to allow a manual Obroh deploy.'
+        required: true
+        default: 'NO'
+
+env:
+  PROJECT_ID: ${{ vars.OBROH_GCP_PROJECT_ID }}
+  REGION: ${{ vars.OBROH_GCP_REGION }}
+  REGISTRY: ${{ vars.OBROH_ARTIFACT_REGISTRY }}
+  BACKEND_API_URL: ${{ vars.OBROH_BACKEND_API_URL }}
+  BACKEND_SERVICE: ${{ vars.OBROH_BACKEND_SERVICE }}
+  WEBSITE_SERVICE: ${{ vars.OBROH_WEBSITE_SERVICE }}
+  ADMIN_SERVICE: ${{ vars.OBROH_ADMIN_SERVICE }}
+  GCS_BUCKET: ${{ vars.OBROH_GCS_BUCKET }}
+  CLOUDSQL_INSTANCE: ${{ vars.OBROH_CLOUDSQL_INSTANCE }}
+  RUNTIME_SERVICE_ACCOUNT: ${{ vars.OBROH_RUNTIME_SERVICE_ACCOUNT }}
+
+jobs:
+  # ── Detect which services changed ──────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      website: ${{ steps.filter.outputs.website }}
+      admin: ${{ steps.filter.outputs.admin }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            website:
+              - 'website/**'
+            admin:
+              - 'admin/**'
+
+  validate-deploy-boundary:
+    needs: changes
+    if: github.event.inputs.confirm_target == 'DEPLOY_OBROH'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate repo deploy boundary
+        run: npm run guard:deploy
+
+      - name: Validate resolved deploy env values
+        run: npm run guard:deploy:env
+
+  # ── Deploy Backend ─────────────────────────────────────────
+  deploy-backend:
+    needs: [changes, validate-deploy-boundary]
+    if: github.event.inputs.confirm_target == 'DEPLOY_OBROH' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --source=backend \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=512Mi \
+            --service-account=${{ env.RUNTIME_SERVICE_ACCOUNT }} \
+            --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --update-secrets=DATABASE_URL=obroh-database-url:latest,JWT_SECRET=JWT_SECRET:latest \
+            --env-vars-file=backend/deploy-env.yaml
+
+  # ── Deploy Website ─────────────────────────────────────────
+  deploy-website:
+    needs: [changes, validate-deploy-boundary]
+    if: github.event.inputs.confirm_target == 'DEPLOY_OBROH' && needs.changes.outputs.website == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build & Push
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.WEBSITE_SERVICE }}:${{ github.sha }}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ env.BACKEND_API_URL }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_ANALYTICS_ENABLED=true \
+            -t $IMAGE \
+            -t ${{ env.REGISTRY }}/${{ env.WEBSITE_SERVICE }}:latest \
+            website/
+          docker push $IMAGE
+          docker push ${{ env.REGISTRY }}/${{ env.WEBSITE_SERVICE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.WEBSITE_SERVICE }} \
+            --image=${{ env.REGISTRY }}/${{ env.WEBSITE_SERVICE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=1Gi
+
+  # ── Deploy Admin ───────────────────────────────────────────
+  deploy-admin:
+    needs: [changes, validate-deploy-boundary]
+    if: github.event.inputs.confirm_target == 'DEPLOY_OBROH' && needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build & Push
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.ADMIN_SERVICE }}:${{ github.sha }}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ env.BACKEND_API_URL }} \
+            -t $IMAGE \
+            -t ${{ env.REGISTRY }}/${{ env.ADMIN_SERVICE }}:latest \
+            admin/
+          docker push $IMAGE
+          docker push ${{ env.REGISTRY }}/${{ env.ADMIN_SERVICE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.ADMIN_SERVICE }} \
+            --image=${{ env.REGISTRY }}/${{ env.ADMIN_SERVICE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=1Gi \
+            --set-env-vars="NEXT_PUBLIC_API_URL=${{ env.BACKEND_API_URL }}"

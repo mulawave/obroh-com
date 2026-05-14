@@ -1,0 +1,6 @@
+FIREBASE_PROJECT_ID: raven-ai-6ff76
+GCS_BUCKET: obroh-media-raven-ai-6ff76
+NODE_ENV: production
+WEBSITE_URL: https://obroh.web.app
+ADMIN_URL: https://admin.obroh.com
+ALLOWED_ORIGINS: "https://obroh.com,https://www.obroh.com,https://obroh.web.app,https://admin.obroh.com,https://obroh-website-zoeqld5lsa-uc.a.run.app,https://obroh-admin-zoeqld5lsa-uc.a.run.app,https://obroh-website-134538542038.us-central1.run.app"
