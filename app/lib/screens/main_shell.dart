@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../theme.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'messages/messages_screen.dart';
-import 'notifications/notifications_screen.dart';
+import 'timeline/timeline_screen.dart';
 import 'profile/profile_screen.dart';
 import 'more/more_screen.dart';
 
@@ -20,13 +20,13 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   int _unreadMessages = 0;
-  int _unreadNotifications = 0;
+  int _unreadTimelinePosts = 0;
   Timer? _pollTimer;
 
   final _screens = const [
     DashboardScreen(),
     MessagesScreen(),
-    NotificationsScreen(),
+    TimelineScreen(),
     ProfileScreen(),
     MoreScreen(),
   ];
@@ -50,12 +50,12 @@ class _MainShellState extends State<MainShell> {
     try {
       final results = await Future.wait([
         ApiService.get('/messages/unread-count', token: token).catchError((_) => {'count': 0}),
-        ApiService.get('/notifications/unread-count', token: token).catchError((_) => {'count': 0}),
+        ApiService.get('/timeline/unread-count', token: token).catchError((_) => {'count': 0}),
       ]);
       if (mounted) {
         setState(() {
           _unreadMessages = (results[0]['count'] as num?)?.toInt() ?? 0;
-          _unreadNotifications = (results[1]['count'] as num?)?.toInt() ?? 0;
+          _unreadTimelinePosts = (results[1]['count'] as num?)?.toInt() ?? 0;
         });
       }
     } catch (_) {}
@@ -84,8 +84,8 @@ class _MainShellState extends State<MainShell> {
               label: 'Messages',
             ),
             BottomNavigationBarItem(
-              icon: _badgeIcon(Icons.notifications_rounded, _unreadNotifications),
-              label: 'Alerts',
+              icon: _badgeIcon(Icons.auto_awesome_rounded, _unreadTimelinePosts),
+              label: 'Timeline',
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded),

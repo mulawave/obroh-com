@@ -161,6 +161,24 @@ router.post("/", ...auth, (req: AuthRequest, res) => {
   });
 });
 
+// GET /timeline/unread-count — get unread timeline posts count
+// For MVP, returns count of new posts in the last 24 hours
+router.get("/unread-count", ...auth, async (req: AuthRequest, res) => {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const count = await prisma.timelinePost.count({
+      where: {
+        hidden: false,
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+    });
+    res.json({ count });
+  } catch (err) {
+    console.error("Unread count error:", err);
+    res.status(500).json({ error: "Failed to fetch unread count" });
+  }
+});
+
 // POST /timeline/:id/like — toggle like
 router.post("/:id/like", ...auth, async (req: AuthRequest, res) => {
   try {
