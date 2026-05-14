@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import prisma from "../lib/prisma";
 import { createMemoryUpload, createObjectName, saveUploadedFile } from "../lib/uploadStorage";
+import { generateAndSaveThumbnail } from "../lib/thumbnailGenerator";
 import { authenticate, requireApproved, AuthRequest } from "../middleware/auth";
 
 const router = Router();
@@ -107,16 +108,30 @@ router.post("/", ...auth, (req: AuthRequest, res) => {
 
       const cat = POST_CATEGORIES.includes(category) ? category : "general";
 
-      const mediaData = await Promise.all(files.map(async (file, i) => ({
-        url: await saveUploadedFile(
+      const mediaData = await Promise.all(files.map(async (file, i) => {
+        const isVideo = file.mimetype.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(file.originalname);
+        const url = await saveUploadedFile(
           file,
           createObjectName("timeline", file.originalname, req.user!.id),
-        ),
-        type: (file.mimetype.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.originalname))
-          ? "image"
-          : "video",
-        sortOrder: i,
-      })));
+        );
+        
+        let thumbnailUrl: string | null = null;
+        if (isVideo) {
+          // Generate thumbnail for video
+          thumbnailUrl = await generateAndSaveThumbnail(
+            file.buffer,
+            file.originalname,
+            `timeline/thumbnails`
+          );
+        }
+
+        return {
+          url,
+          type: isVideo ? "video" : "image",
+          sortOrder: i,
+          ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        };
+      }));
 
       const postData: any = {
         authorId: req.user!.id,

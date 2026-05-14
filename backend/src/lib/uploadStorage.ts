@@ -18,17 +18,29 @@ type UploadOptions = {
 
 function inferContentTypeFromPath(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
+  // Images
   if (ext === ".png") return "image/png";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
   if (ext === ".svg") return "image/svg+xml";
   if (ext === ".avif") return "image/avif";
+  // Videos
+  if (ext === ".mp4") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".m4v") return "video/x-m4v";
+  if (ext === ".mkv") return "video/x-matroska";
+  if (ext === ".avi") return "video/x-msvideo";
   return null;
 }
 
 function isLikelyImagePath(filePath: string) {
-  return inferContentTypeFromPath(filePath) !== null;
+  return /\.(png|jpe?g|webp|gif|svg|avif)$/i.test(filePath);
+}
+
+function isLikelyVideoPath(filePath: string) {
+  return /\.(mp4|webm|mov|m4v|mkv|avi)$/i.test(filePath);
 }
 
 function normalizeUploadPath(uploadPath: string) {
@@ -127,8 +139,10 @@ export async function streamUploadedFile(req: Request, res: Response, next: Next
 
     if (contentType) {
       res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", "inline");
     }
     res.setHeader("Cache-Control", metadata.cacheControl ?? "public, max-age=3600");
+    res.setHeader("Accept-Ranges", "bytes");
 
     target.createReadStream().on("error", next).pipe(res);
   } catch (error) {

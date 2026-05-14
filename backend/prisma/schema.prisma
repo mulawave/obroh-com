@@ -168,14 +168,15 @@ model TimelinePost {
 }
 
 model TimelinePostMedia {
-  id        String       @id @default(cuid())
-  postId    String
-  post      TimelinePost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  url       String
-  type      String
-  caption   String?
-  sortOrder Int          @default(0)
-  createdAt DateTime     @default(now())
+  id           String       @id @default(cuid())
+  postId       String
+  post         TimelinePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  url          String
+  type         String
+  caption      String?
+  sortOrder    Int          @default(0)
+  thumbnailUrl String?      // For videos: first frame thumbnail
+  createdAt    DateTime     @default(now())
 
   @@map("timeline_post_media")
 }

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/request_guard.dart';
@@ -1322,66 +1323,172 @@ class _VideoRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(
         children: videos.map((v) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 4),
-            decoration: BoxDecoration(
-              color: ObrohColors.obsidian800,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      color: ObrohColors.obsidian900,
-                      child: const Icon(
-                        Icons.videocam_rounded,
-                        color: ObrohColors.gold400,
-                        size: 48,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: ObrohColors.obsidian950.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Video',
-                            style: TextStyle(color: Colors.white, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
+          return _VideoPlayer(video: v);
         }).toList(),
       ),
     );
   }
 }
+
+class _VideoPlayer extends StatefulWidget {
+  final Map<String, dynamic> video;
+  const _VideoPlayer({required this.video});
+  @override
+  State<_VideoPlayer> createState() => _VideoPlayerState();
+}
+
+class _VideoPlayerState extends State<_VideoPlayer> {
+  late VideoPlayerController _controller;
+  late Future<void> _initializeVideoPlayerFuture;
+  bool _showPlayButton = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final url = ApiService.imageUrl(widget.video['url']?.toString());
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      httpHeaders: {},
+    );
+
+    _initializeVideoPlayerFuture = _controller.initialize().catchError((error) {
+      print("Video initialization error: $error");
+      return null;
+    });
+
+    _controller.addListener(_videoListener);
+  }
+
+  void _videoListener() {
+    if (!mounted) return;
+    if (_controller.value.isPlaying && _showPlayButton) {
+      setState(() => _showPlayButton = false);
+    } else if (!_controller.value.isPlaying && !_showPlayButton && _controller.value.position != Duration.zero) {
+      // Only hide play button if video is not at the start
+      if (_controller.value.position != Duration.zero) {
+        return;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_videoListener);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thumbnailUrl = widget.video['thumbnailUrl']?.toString();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: ObrohColors.obsidian800,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: FutureBuilder<void>(
+        future: _initializeVideoPlayerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            return GestureDetector(
+              onTap: () => setState(() {
+                if (_controller.value.isPlaying) {
+                  _controller.pause();
+                  setState(() => _showPlayButton = true);
+                } else {
+                  _controller.play();
+                  setState(() => _showPlayButton = false);
+                }
+              }),
+              child: AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(_controller),
+                    if (_showPlayButton)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: ObrohColors.obsidian950.withValues(alpha: 0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          } else if (snapshot.hasError) {
+            return AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  color: ObrohColors.obsidian900,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.videocam_off_rounded,
+                        color: ObrohColors.error,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Video unavailable',
+                        style: TextStyle(
+                          color: ObrohColors.foreground.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          } else {
+            // Loading state - show thumbnail if available
+            return AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (thumbnailUrl != null)
+                      Image.network(
+                        ApiService.imageUrl(thumbnailUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: ObrohColors.obsidian900,
+                        ),
+                      )
+                    else
+                      Container(color: ObrohColors.obsidian900),
+                    const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
 
 class _Lightbox extends StatefulWidget {
   final List<Map<String, dynamic>> images;
