@@ -1,0 +1,692 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Core ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String   @unique
+  password      String
+  phone         String?
+  location      String?
+  branchId      String?
+  branch        FamilyBranch? @relation("BranchMembers", fields: [branchId], references: [id])
+  relationship  String?
+  role          String   @default("member")
+  status        String   @default("pending")
+  profileImage  String?
+  bio           String?
+  username      String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile            UserProfile?
+  badges             UserBadge[]
+  timelinePosts      TimelinePost[]
+  timelineLikes      TimelinePostLike[]
+  timelineComments   TimelinePostComment[]
+  portfolio          Portfolio?
+  biography          Biography?
+  legalDeclarations  LegalDeclaration[]
+  sentMessages       InternalMessage[]              @relation("MessageSender")
+  receivedMessages   InternalMessageRecipient[]
+  messageDrafts      MessageDraft[]
+  lineageAsParent    LineageRelationship[]           @relation("LineageParent")
+  lineageAsChild     LineageRelationship[]           @relation("LineageChild")
+  childRequests      ChildRegistrationRequest[]
+  notifications      Notification[]
+  fcmDeviceTokens    FcmDeviceToken[]
+  refreshTokens      RefreshToken[] @relation("UserRefreshTokens")
+  contentEdits       SiteContent[]                   @relation("ContentEditor")
+  patriarchBranches  FamilyBranch[]                   @relation("BranchPatriarch")
+  books              Book[]
+
+  @@map("users")
+}
+
+model ContactSubmission {
+  id         String   @id @default(cuid())
+  name       String
+  email      String
+  reason     String
+  message    String
+  status     String   @default("unread")
+  adminNotes String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("contact_submissions")
+}
+
+model SiteContent {
+  id        String   @id @default(cuid())
+  page      String
+  section   String
+  key       String
+  value     String
+  type      String   @default("text")
+  label     String
+  updatedBy String?
+  editor    User?    @relation("ContentEditor", fields: [updatedBy], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([page, section, key])
+  @@map("site_content")
+}
+
+// ─── User Profile ────────────────────────────────────────────────────────────
+
+model UserProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredName    String?
+  gender           String?
+  dateOfBirth      String?
+  placeOfBirth     String?
+  nationality      String?
+  stateOfOrigin    String?
+  localGovernment  String?
+  religion         String?
+  maritalStatus    String?
+  height           String?
+  lastWeight       String?
+  skinTone         String?
+  bloodGroup       String?
+  genotype         String?
+  waistSize        String?
+  trouserLength    String?
+  shoeSize         String?
+  shirtSize        String?
+  drinkAlcohol     String?
+  smoke            String?
+  bestMeals        String?
+  languages        String?
+  socialLinks      String?
+  emergencyContact String?
+  customFields     String?
+  fieldVisibility  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  identifyingMarks ProfileIdentifyingMark[]
+
+  @@map("user_profiles")
+}
+
+model ProfileIdentifyingMark {
+  id          String      @id @default(cuid())
+  profileId   String
+  profile     UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type        String
+  description String?
+  imageUrl    String?
+  createdAt   DateTime    @default(now())
+
+  @@map("profile_identifying_marks")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  icon      String?
+  grantedAt DateTime @default(now())
+  grantedBy String?
+
+  @@map("user_badges")
+}
+
+// ─── Timeline / Feed ─────────────────────────────────────────────────────────
+
+model TimelinePost {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  category  String   @default("general")
+  pinned    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media    TimelinePostMedia[]
+  likes    TimelinePostLike[]
+  comments TimelinePostComment[]
+
+  @@map("timeline_posts")
+}
+
+model TimelinePostMedia {
+  id        String       @id @default(cuid())
+  postId    String
+  post      TimelinePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  url       String
+  type      String
+  caption   String?
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+
+  @@map("timeline_post_media")
+}
+
+model TimelinePostLike {
+  id        String       @id @default(cuid())
+  postId    String
+  post      TimelinePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([postId, userId])
+  @@map("timeline_post_likes")
+}
+
+model TimelinePostComment {
+  id        String       @id @default(cuid())
+  postId    String
+  post      TimelinePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("timeline_post_comments")
+}
+
+// ─── Internal Messaging ──────────────────────────────────────────────────────
+
+model InternalMessage {
+  id          String   @id @default(cuid())
+  senderId    String
+  sender      User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  subject     String
+  body        String
+  isFromGuest Boolean  @default(false)
+  guestName   String?
+  guestEmail  String?
+  createdAt   DateTime @default(now())
+
+  recipients  InternalMessageRecipient[]
+  attachments InternalMessageAttachment[]
+
+  @@map("internal_messages")
+}
+
+model InternalMessageRecipient {
+  id        String          @id @default(cuid())
+  messageId String
+  message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder    String          @default("inbox")
+  isRead    Boolean         @default(false)
+  readAt    DateTime?
+  createdAt DateTime        @default(now())
+
+  @@map("internal_message_recipients")
+}
+
+model InternalMessageAttachment {
+  id        String          @id @default(cuid())
+  messageId String
+  message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName  String
+  fileUrl   String
+  fileType  String
+  fileSize  Int
+  createdAt DateTime        @default(now())
+
+  @@map("internal_message_attachments")
+}
+
+model MessageDraft {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipients String?
+  subject    String?
+  body       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("message_drafts")
+}
+
+// ─── Portfolio ───────────────────────────────────────────────────────────────
+
+model Portfolio {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline  String?
+  summary   String?
+  isPublic  Boolean  @default(false)
+  slug      String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  galleryImages  PortfolioGalleryImage[]
+  projects       PortfolioProject[]
+  skills         PortfolioSkill[]
+  experiences    PortfolioExperience[]
+  education      PortfolioEducation[]
+  publicMessages PortfolioPublicMessage[]
+
+  @@map("portfolios")
+}
+
+model PortfolioGalleryImage {
+  id          String    @id @default(cuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  url         String
+  caption     String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@map("portfolio_gallery_images")
+}
+
+model PortfolioProject {
+  id          String    @id @default(cuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  url         String?
+  imageUrl    String?
+  tags        String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  images PortfolioProjectImage[]
+
+  @@map("portfolio_projects")
+}
+
+model PortfolioProjectImage {
+  id        String           @id @default(cuid())
+  projectId String
+  project   PortfolioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url       String
+  caption   String?
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+
+  @@map("portfolio_project_images")
+}
+
+model PortfolioSkill {
+  id              String    @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  name            String
+  yearsExperience Int?
+  level           String?
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  @@map("portfolio_skills")
+}
+
+model PortfolioExperience {
+  id          String    @id @default(cuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  title       String
+  company     String
+  location    String?
+  startDate   String?
+  endDate     String?
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  images PortfolioExperienceImage[]
+
+  @@map("portfolio_experiences")
+}
+
+model PortfolioExperienceImage {
+  id            String             @id @default(cuid())
+  experienceId  String
+  experience    PortfolioExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  url           String
+  caption       String?
+  sortOrder     Int                @default(0)
+  createdAt     DateTime           @default(now())
+
+  @@map("portfolio_experience_images")
+}
+
+model PortfolioEducation {
+  id          String    @id @default(cuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  institution String
+  degree      String?
+  field       String?
+  startYear   String?
+  endYear     String?
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@map("portfolio_education")
+}
+
+model PortfolioPublicMessage {
+  id          String    @id @default(cuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  name        String
+  email       String
+  message     String
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@map("portfolio_public_messages")
+}
+
+// ─── Books / Library ─────────────────────────────────────────────────────────
+
+model Book {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  synopsis      String?
+  pdfUrl        String?
+  coverImageUrl String?
+  purchaseLinks String?  // JSON array of { label, url }
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("books")
+}
+
+// ─── Biography ───────────────────────────────────────────────────────────────
+
+model Biography {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPublic  Boolean  @default(false)
+  slug      String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections BiographySection[]
+
+  @@map("biographies")
+}
+
+model BiographySection {
+  id          String    @id @default(cuid())
+  biographyId String
+  biography   Biography @relation(fields: [biographyId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("biography_sections")
+}
+
+// ─── Legacy Archive ─────────────────────────────────────────────────────────────
+
+model Legacy {
+  id          String   @id @default(cuid())
+  type        String   // "milestone", "achievement", "pillar"
+  year        String?  // For milestones
+  title       String
+  description String
+  icon        String?  // Icon name from lucide-react
+  category    String?  // For achievements
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("legacy")
+}
+
+// ─── Knowledge Base ───────────────────────────────────────────────────────────
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  type        String   // "category" or "article"
+  title       String
+  description String?  // For categories
+  content     String?  // For articles (full content)
+  excerpt     String?  // For articles (short preview)
+  category    String?  // For articles (category name)
+  icon        String?  // For categories (icon name from lucide-react)
+  readTime    String?  // For articles (e.g., "5 min read")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("knowledge_base")
+}
+
+// ─── Roles & Permissions ──────────────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions String   // JSON string array of permissions
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
+}
+
+// ─── Lineage ─────────────────────────────────────────────────────────────────
+
+model FamilyBranch {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  image       String?
+  parentId    String?
+  parent      FamilyBranch? @relation("BranchHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    FamilyBranch[] @relation("BranchHierarchy")
+  patriarchId String?
+  patriarch   User?    @relation("BranchPatriarch", fields: [patriarchId], references: [id])
+  level       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     User[]   @relation("BranchMembers")
+
+  @@map("family_branches")
+}
+
+model LineageRelationship {
+  id           String   @id @default(cuid())
+  parentId     String
+  parent       User     @relation("LineageParent", fields: [parentId], references: [id], onDelete: Cascade)
+  childId      String
+  child        User     @relation("LineageChild", fields: [childId], references: [id], onDelete: Cascade)
+  relationType String   @default("biological")
+  createdAt    DateTime @default(now())
+
+  @@unique([parentId, childId])
+  @@map("lineage_relationships")
+}
+
+model ChildRegistrationRequest {
+  id            String   @id @default(cuid())
+  requestedById String
+  requestedBy   User     @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  firstName     String
+  lastName      String
+  dateOfBirth   String?
+  gender        String?
+  branch        String?
+  status        String   @default("pending")
+  adminNotes    String?
+  createdUserId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("child_registration_requests")
+}
+
+// ─── Legal Declarations ──────────────────────────────────────────────────────
+
+model LegalDeclaration {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  type            String
+  description     String
+  status          String   @default("submitted")
+  adminNotes      String?
+  publishedToFeed Boolean  @default(false)
+  timelinePostId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  documents LegalDeclarationDocument[]
+
+  @@map("legal_declarations")
+}
+
+model LegalDeclarationDocument {
+  id            String           @id @default(cuid())
+  declarationId String
+  declaration   LegalDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  fileName      String
+  fileUrl       String
+  fileType      String
+  fileSize      Int
+  createdAt     DateTime         @default(now())
+
+  @@map("legal_declaration_documents")
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ─── SMTP Settings ─────────────────────────────────────────────────────────────
+
+model SmtpSettings {
+  id          String   @id @default(cuid())
+  host        String
+  port        Int
+  secure      Boolean  @default(true)
+  user        String
+  password    String
+  fromName    String   @default("Obroh Family")
+  fromEmail   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("smtp_settings")
+}
+
+// ─── FCM Device Tokens ───────────────────────────────────────────────────────
+
+model FcmDeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   // 'ios' or 'android'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("fcm_device_tokens")
+}
+
+// ─── Legacy Archive ───────────────────────────────────────────────────────────
+
+model LegacyMilestone {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        String
+  category    String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("legacy_milestones")
+}
+
+model LegacyAchievement {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  recipient   String
+  date        String
+  category    String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("legacy_achievements")
+}
+
+// ─── Refresh Token ─────────────────────────────────────────────────────────
+
+model RefreshToken {
+  token     String   @id
+  userId    String
+  user      User     @relation("UserRefreshTokens", fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─── Knowledge Base ─────────────────────────────────────────────────────────
+
+model KnowledgeBaseArticle {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  content     String
+  category    String
+  summary     String?
+  imageUrl    String?
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("knowledge_base_articles")
+}
