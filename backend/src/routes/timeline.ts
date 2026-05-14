@@ -3,6 +3,7 @@ import multer from "multer";
 import prisma from "../lib/prisma";
 import { createMemoryUpload, createObjectName, saveUploadedFile } from "../lib/uploadStorage";
 import { generateAndSaveThumbnail } from "../lib/thumbnailGenerator";
+import { sendPushNotification } from "../lib/fcm";
 import { authenticate, requireApproved, AuthRequest } from "../middleware/auth";
 
 const router = Router();
@@ -185,11 +186,35 @@ router.post("/:id/like", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const userId = req.user!.id;
     const existing = await prisma.timelinePostLike.findUnique({ where: { postId_userId: { postId, userId } } });
+    
     if (existing) {
       await prisma.timelinePostLike.delete({ where: { id: existing.id } });
       res.json({ liked: false });
     } else {
       await prisma.timelinePostLike.create({ data: { postId, userId } });
+      
+      // Send notification to post author if they didn't like their own post
+      const post = await prisma.timelinePost.findUnique({
+        where: { id: postId },
+        select: { authorId: true },
+      });
+      
+      if (post && post.authorId !== userId) {
+        const liker = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true },
+        });
+        
+        if (liker) {
+          await sendPushNotification(
+            post.authorId,
+            "Timeline Post Liked",
+            `${liker.firstName} ${liker.lastName} liked your post`,
+            `/timeline`
+          );
+        }
+      }
+      
       res.json({ liked: true });
     }
   } catch (err) {
@@ -204,10 +229,34 @@ router.post("/:id/comments", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ error: "Comment content is required" }); return; }
+    
     const comment = await prisma.timelinePostComment.create({
       data: { postId, authorId: req.user!.id, content: content.trim() },
       include: { author: { select: TIMELINE_AUTHOR_SELECT } },
     });
+    
+    // Send notification to post author
+    const post = await prisma.timelinePost.findUnique({
+      where: { id: postId },
+      select: { authorId: true },
+    });
+    
+    if (post && post.authorId !== req.user!.id) {
+      const commenter = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: { firstName: true, lastName: true },
+      });
+      
+      if (commenter) {
+        await sendPushNotification(
+          post.authorId,
+          "New Comment on Your Post",
+          `${commenter.firstName} ${commenter.lastName} commented on your post`,
+          `/timeline`
+        );
+      }
+    }
+    
     res.status(201).json(comment);
   } catch (err) {
     console.error("Comment error:", err);
@@ -220,10 +269,34 @@ router.post("/:id/comment", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ error: "Comment content is required" }); return; }
+    
     const comment = await prisma.timelinePostComment.create({
       data: { postId, authorId: req.user!.id, content: content.trim() },
       include: { author: { select: TIMELINE_AUTHOR_SELECT } },
     });
+    
+    // Send notification to post author
+    const post = await prisma.timelinePost.findUnique({
+      where: { id: postId },
+      select: { authorId: true },
+    });
+    
+    if (post && post.authorId !== req.user!.id) {
+      const commenter = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: { firstName: true, lastName: true },
+      });
+      
+      if (commenter) {
+        await sendPushNotification(
+          post.authorId,
+          "New Comment on Your Post",
+          `${commenter.firstName} ${commenter.lastName} commented on your post`,
+          `/timeline`
+        );
+      }
+    }
+    
     res.status(201).json(comment);
   } catch (err) {
     console.error("Comment error:", err);
