@@ -122,12 +122,14 @@ const _kProfileFields = [
   ),
 ];
 
+
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final String? userId;
+  
+  const ProfileScreen({super.key, this.userId});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
-
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   final _firstNameCtrl = TextEditingController();
