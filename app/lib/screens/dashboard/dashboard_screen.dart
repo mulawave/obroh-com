@@ -21,6 +21,8 @@ import '../portfolio/portfolio_screen.dart';
 import '../profile/profile_screen.dart';
 import '../resume/resume_screen.dart';
 import '../timeline/timeline_screen.dart';
+import '../messages/messages_screen.dart';
+import '../notifications/notifications_screen.dart';
 
 const _kHomeComposerCategories = [
   _HomeComposerCategory(
@@ -423,6 +425,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     count: _unreadMessages,
                     color: Colors.cyan,
                     loading: _loading,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MessagesScreen()),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   _StatCard(
@@ -431,6 +437,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     count: _unreadNotifications,
                     color: ObrohColors.gold400,
                     loading: _loading,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen(),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -903,6 +915,7 @@ class _StatCard extends StatelessWidget {
   final int count;
   final Color color;
   final bool loading;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.icon,
@@ -910,49 +923,55 @@ class _StatCard extends StatelessWidget {
     required this.count,
     required this.color,
     this.loading = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GoldCard(
-        padding: const EdgeInsets.all(16),
-        child: loading
-            ? const ShimmerLoading(height: 40)
-            : Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: color.withValues(alpha: 0.15),
+      child: GestureDetector(
+        onTap: onTap,
+        child: GoldCard(
+          padding: const EdgeInsets.all(16),
+          child: loading
+              ? const ShimmerLoading(height: 40)
+              : Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: color.withValues(alpha: 0.15),
+                      ),
+                      child: Icon(icon, color: color, size: 20),
                     ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$count unread',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: ObrohColors.foreground,
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$count unread',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: ObrohColors.foreground,
+                          ),
                         ),
-                      ),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: ObrohColors.foreground.withValues(alpha: 0.4),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: ObrohColors.foreground.withValues(
+                              alpha: 0.4,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                      ],
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -1036,17 +1055,17 @@ class _PostPreviewCard extends StatelessWidget {
     final author = post['author'] as Map<String, dynamic>? ?? {};
     final content = post['content']?.toString() ?? '';
     final postId = post['id']?.toString() ?? '';
-    
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
         onTap: postId.isNotEmpty
             ? () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TimelineScreen(initialPostId: postId),
-              ),
-            )
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TimelineScreen(initialPostId: postId),
+                ),
+              )
             : null,
         child: GoldCard(
           child: Row(
