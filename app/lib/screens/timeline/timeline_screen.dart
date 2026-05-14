@@ -62,7 +62,13 @@ const _kComposerCategories = [
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 class TimelineScreen extends StatefulWidget {
-  const TimelineScreen({super.key});
+  final String? initialPostId;
+  
+  const TimelineScreen({
+    super.key,
+    this.initialPostId,
+  });
+  
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
 }
@@ -77,6 +83,7 @@ class _TimelineScreenState extends State<TimelineScreen>
   final List<XFile> _pickedMedia = [];
   final _picker = ImagePicker();
   bool _mediaRationaleShown = false;
+  late ScrollController _scrollController;
 
   late AnimationController _animCtrl;
   late Animation<double> _fade;
@@ -84,6 +91,7 @@ class _TimelineScreenState extends State<TimelineScreen>
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     _animCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -96,7 +104,26 @@ class _TimelineScreenState extends State<TimelineScreen>
   void dispose() {
     _animCtrl.dispose();
     _postCtrl.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _scrollToPost(String postId) async {
+    // Wait for the list to be built and scrolled
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    if (!mounted) return;
+    
+    // Find the index of the post
+    final index = _posts.indexWhere((p) => p['id'].toString() == postId);
+    if (index == -1) return;
+
+    // Scroll to the post
+    await _scrollController.animateTo(
+      index * 140, // Approximate height of each post item
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<void> _load() async {
@@ -111,6 +138,11 @@ class _TimelineScreenState extends State<TimelineScreen>
           _loading = false;
         });
         _animCtrl.forward(from: 0);
+        
+        // Scroll to initial post if provided
+        if (widget.initialPostId != null) {
+          await _scrollToPost(widget.initialPostId!);
+        }
       }
     } on ApiException catch (e) {
       await RequestGuard.handleApiException(context, e, onRetry: _load);
@@ -336,6 +368,7 @@ class _TimelineScreenState extends State<TimelineScreen>
                       color: ObrohColors.gold400,
                       onRefresh: _load,
                       child: ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,

@@ -1035,48 +1035,60 @@ class _PostPreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final author = post['author'] as Map<String, dynamic>? ?? {};
     final content = post['content']?.toString() ?? '';
+    final postId = post['id']?.toString() ?? '';
+    
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: GoldCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AvatarCircle(
-              imageUrl: author['profileImage']?.toString(),
-              initials:
-                  '${(author['firstName']?.toString() ?? '?')[0]}${(author['lastName']?.toString() ?? '?')[0]}',
-              size: 36,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${author['firstName'] ?? ''} ${author['lastName'] ?? ''}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: ObrohColors.foreground,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    content.length > 140
-                        ? '${content.substring(0, 140)}...'
-                        : content,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: ObrohColors.foreground.withValues(alpha: 0.6),
-                      height: 1.4,
-                    ),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+      child: GestureDetector(
+        onTap: postId.isNotEmpty
+            ? () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TimelineScreen(initialPostId: postId),
               ),
-            ),
-          ],
+            )
+            : null,
+        child: GoldCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AvatarCircle(
+                imageUrl: author['profileImage']?.toString(),
+                initials:
+                    '${(author['firstName']?.toString() ?? '?')[0]}${(author['lastName']?.toString() ?? '?')[0]}',
+                size: 36,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${author['firstName'] ?? ''} ${author['lastName'] ?? ''}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: ObrohColors.foreground,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      content.length > 140
+                          ? '${content.substring(0, 140)}...'
+                          : content,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: ObrohColors.foreground.withValues(alpha: 0.6),
+                        height: 1.4,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
