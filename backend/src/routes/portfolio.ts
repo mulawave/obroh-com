@@ -118,6 +118,33 @@ router.get("/", ...auth, async (req: AuthRequest, res) => {
 
 // PUT /portfolio — update portfolio settings
 router.put("/", ...auth, async (req: AuthRequest, res) => {
+
+  // GET /portfolio/members/:userId — view another member's portfolio (members-only)
+  router.get("/members/:userId", ...auth, async (req: AuthRequest, res) => {
+    try {
+      const portfolio = await prisma.portfolio.findUnique({
+        where: { userId: req.params.userId },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, profileImage: true, bio: true } },
+          galleryImages: { orderBy: { sortOrder: "asc" } },
+          projects: { include: { images: true }, orderBy: { sortOrder: "asc" } },
+          skills: { orderBy: { sortOrder: "asc" } },
+          experiences: { include: { images: { orderBy: { sortOrder: "asc" } } }, orderBy: { sortOrder: "asc" } },
+          education: { orderBy: { sortOrder: "asc" } },
+        },
+      });
+      if (!portfolio) {
+        res.status(404).json({ error: "Portfolio not found" });
+        return;
+      }
+      res.json(normalizePortfolioForResponse(portfolio));
+    } catch (err) {
+      console.error("Get member portfolio error:", err);
+      res.status(500).json({ error: "Failed to load portfolio" });
+    }
+  });
+
+  // PUT /portfolio — update portfolio settings
   try {
     const { headline, summary, isPublic, slug } = req.body;
     const portfolio = await prisma.portfolio.upsert({

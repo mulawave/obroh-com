@@ -9,8 +9,10 @@ import '../../services/request_guard.dart';
 import '../../theme.dart';
 import '../../widgets/avatar_circle.dart';
 import '../../widgets/gold_card.dart';
-import '../../widgets/shimmer_loading.dart';
 
+import '../../widgets/shimmer_loading.dart';
+import '../portfolio/portfolio_screen.dart';
+import '../profile/profile_screen.dart';
 // ─── Post Categories ──────────────────────────────────────────────────────────
 
 const _kComposerCategories = [

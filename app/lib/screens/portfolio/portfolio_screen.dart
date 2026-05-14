@@ -15,15 +15,20 @@ import '../../widgets/shimmer_loading.dart';
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 
+class PortfolioScreen extends StatefulWidget {
+  final String? viewingUserId;
+
+  const PortfolioScreen({super.key, this.viewingUserId});
+
   @override
   State<PortfolioScreen> createState() => _PortfolioScreenState();
 }
-
 class _PortfolioScreenState extends State<PortfolioScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _portfolio;
   bool _loading = true;
   bool _busy = false;
+    bool get _isOwnPortfolio => widget.viewingUserId == null;
   late TabController _tabController;
   int _selectedTab = 0;
   final ImagePicker _imagePicker = ImagePicker();
@@ -104,7 +109,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       return;
     }
     try {
-      final res = await ApiService.get('/portfolio', token: token);
+        final endpoint = _isOwnPortfolio
+          ? '/portfolio'
+          : '/portfolio/members/${widget.viewingUserId}';
+        final res = await ApiService.get(endpoint, token: token);
       if (mounted) {
         setState(() {
           _portfolio = (res['portfolio'] is Map<String, dynamic>)
@@ -1277,15 +1285,15 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             Tab(text: 'Education'),
           ],
         ),
+      ),
         actions: [
-          if (_selectedTab == 0)
+          if (_selectedTab == 0 && _isOwnPortfolio)
             IconButton(
               onPressed: _busy ? null : _editSettings,
               icon: const Icon(Icons.edit_note_rounded),
               tooltip: 'Edit Settings',
             ),
         ],
-      ),
       body: _loading
           ? Padding(
               padding: const EdgeInsets.all(16),
@@ -1391,18 +1399,19 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          LoadingButton(
-            onPressed: _togglePublic,
-            loading: _busy,
-            label: _portfolio?['isPublic'] == true
-                ? 'Make Private'
-                : 'Make Public',
-            icon: _portfolio?['isPublic'] == true
-                ? Icons.lock_rounded
-                : Icons.public_rounded,
-          ),
         ],
+          const SizedBox(height: 12),
+          if (_isOwnPortfolio)
+            LoadingButton(
+              onPressed: _togglePublic,
+              loading: _busy,
+              label: _portfolio?['isPublic'] == true
+                  ? 'Make Private'
+                  : 'Make Public',
+              icon: _portfolio?['isPublic'] == true
+                  ? Icons.lock_rounded
+                  : Icons.public_rounded,
+            ),
       ),
     );
   }
@@ -1415,7 +1424,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          GoldCard(
+          if (_isOwnPortfolio)
+            GoldCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1549,20 +1559,21 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                           ),
                         ),
                       ],
+                    ],
                       const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          onPressed: () =>
-                              _deleteGalleryImage(image['id'].toString()),
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                            color: ObrohColors.error,
+                      if (_isOwnPortfolio)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            onPressed: () =>
+                                _deleteGalleryImage(image['id'].toString()),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: ObrohColors.error,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
                   ),
                 ),
               );
