@@ -2,10 +2,10 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { SignOptions } from "jsonwebtoken";
-import { Prisma } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { createRefreshToken, verifyRefreshToken, revokeRefreshToken } from "../lib/refreshTokens";
+import { Prisma } from "@prisma/client";
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "obroh-dynasty-secret-key-2024-dev";
@@ -13,18 +13,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "obroh-dynasty-secret-key-2024-dev"
 function signToken(userId: string) {
   const options: SignOptions = { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as SignOptions["expiresIn"] };
   return jwt.sign({ userId }, JWT_SECRET, options);
-}
-
-async function tryCreateRefreshToken(userId: string): Promise<string | null> {
-  try {
-    return await createRefreshToken(userId, 90);
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021") {
-      console.warn("Refresh token table missing; continuing login without refresh token");
-      return null;
-    }
-    throw err;
-  }
 }
 
 // POST /api/auth/register
@@ -52,7 +40,7 @@ router.post("/register", async (req, res) => {
       userId: user.id,
     });
   } catch (err) {
-    console.error("Register error:", err);
+    console.error("Registration error:", err);
     res.status(500).json({ error: "Registration failed. Please try again." });
   }
 });
@@ -87,7 +75,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = signToken(user.id);
-    const refreshToken = await tryCreateRefreshToken(user.id);
+    const refreshToken = await createRefreshToken(user.id, 90);
     res.json({
       token,
       refreshToken,
@@ -100,10 +88,8 @@ router.post("/login", async (req, res) => {
         status: user.status,
         profileImage: user.profileImage,
         bio: user.bio,
-        username: user.username,
         phone: user.phone,
         location: user.location,
-        branchId: user.branchId,
         badges: user.badges,
       },
     });
@@ -135,7 +121,7 @@ router.post("/admin-login", async (req, res) => {
     }
 
     const token = signToken(user.id);
-    const refreshToken = await tryCreateRefreshToken(user.id);
+    const refreshToken = await createRefreshToken(user.id, 90);
     res.json({
       token,
       refreshToken,
@@ -194,15 +180,12 @@ router.post("/logout", authenticate as any, async (req: AuthRequest, res) => {
 router.get("/me", authenticate as any, async (req: AuthRequest, res) => {
   const u = await prisma.user.findUnique({
     where: { id: req.user!.id },
-    include: {
+    include: { 
       badges: { select: { label: true, icon: true } },
       branch: { select: { id: true, name: true } },
     },
   });
-  if (!u) {
-    res.status(401).json({ error: "User not found" });
-    return;
-  }
+  if (!u) { res.status(401).json({ error: "User not found" }); return; }
   res.json({
     user: {
       id: u.id,
