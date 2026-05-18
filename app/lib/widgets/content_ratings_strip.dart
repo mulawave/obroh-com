@@ -13,75 +13,97 @@ class ContentRatingsStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badges = <Widget>[
-      _rectBadge(
-        '12',
-        'ACB',
-        foreground: Colors.white,
-        gradient: _badgeGradient,
-      ),
-      _rectBadge(
-        'TEEN',
-        'ESRB',
-        background: Colors.white,
-        foreground: Colors.black,
-      ),
-      _rectBadge(
-        '!',
-        'www.pegi.info',
-        foreground: Colors.white,
-        isPegi: true,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            ObrohColors.gold300,
-            ObrohColors.gold500,
-            ObrohColors.gold600,
-          ],
-        ),
-      ),
-      _rectBadge(
-        'USK 12',
-        'Germany',
-        background: const Color(0xFF38BE6A),
-        foreground: Colors.black,
-      ),
-      _rectBadge(
-        '12+',
-        'IARC',
-        background: Colors.white,
-        foreground: Colors.black,
-      ),
-      _circleBadge('12'),
-      _circleBadge('12'),
-    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final spacing = compact ? 3.0 : 5.0;
+        final runSpacing = compact ? 3.0 : 5.0;
 
-    return Column(
-      children: [
-        Text(
-          'CONTENT RATINGS',
-          style: TextStyle(
-            color: ObrohColors.gold400.withValues(alpha: 0.55),
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.9,
+        final badges = <Widget>[
+          _rectBadge(
+            '12',
+            'ACB',
+            compact: compact,
+            foreground: Colors.white,
+            gradient: _badgeGradient,
           ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 5,
-          runSpacing: 5,
-          children: badges,
-        ),
-      ],
+          _rectBadge(
+            'TEEN',
+            'ESRB',
+            compact: compact,
+            background: Colors.white,
+            foreground: Colors.black,
+          ),
+          _rectBadge(
+            '!',
+            'www.pegi.info',
+            compact: compact,
+            foreground: Colors.white,
+            isPegi: true,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                ObrohColors.gold300,
+                ObrohColors.gold500,
+                ObrohColors.gold600,
+              ],
+            ),
+          ),
+          _rectBadge(
+            'USK 12',
+            'Germany',
+            compact: compact,
+            background: const Color(0xFF38BE6A),
+            foreground: Colors.black,
+          ),
+          _rectBadge(
+            '12+',
+            'IARC',
+            compact: compact,
+            background: Colors.white,
+            foreground: Colors.black,
+          ),
+          _circleBadge('12', compact: compact),
+          _circleBadge('12', compact: compact),
+        ];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: Text(
+                'CONTENT RATINGS',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: ObrohColors.gold400.withValues(alpha: 0.55),
+                  fontSize: compact ? 7.5 : 8,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.9,
+                ),
+              ),
+            ),
+            SizedBox(height: compact ? 6 : 8),
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: spacing,
+                runSpacing: runSpacing,
+                children: badges,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   Widget _rectBadge(
     String label,
     String sublabel, {
+    required bool compact,
     Color? background,
     Color foreground = Colors.white,
     bool isPegi = false,
@@ -89,9 +111,9 @@ class ContentRatingsStrip extends StatelessWidget {
   }) {
     final surface = background ?? ObrohColors.gold500;
     return Container(
-      constraints: const BoxConstraints(minWidth: 32),
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 5),
+      constraints: BoxConstraints(minWidth: compact ? 28 : 32),
+      height: compact ? 28 : 30,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 5),
       decoration: BoxDecoration(
         color: gradient == null ? surface : null,
         gradient: gradient,
@@ -110,11 +132,17 @@ class ContentRatingsStrip extends StatelessWidget {
             label,
             style: TextStyle(
               color: foreground,
-              fontSize: isPegi
-                  ? 13
-                  : label == 'TEEN'
-                  ? 8
-                  : 10,
+              fontSize: compact
+                  ? (isPegi
+                        ? 11.5
+                        : label == 'TEEN'
+                        ? 7.5
+                        : 9)
+                  : (isPegi
+                        ? 13
+                        : label == 'TEEN'
+                        ? 8
+                        : 10),
               fontWeight: FontWeight.w900,
               letterSpacing: label == 'TEEN' ? 1.0 : 0,
               height: 1,
@@ -125,7 +153,7 @@ class ContentRatingsStrip extends StatelessWidget {
             sublabel,
             style: TextStyle(
               color: foreground.withValues(alpha: 0.82),
-              fontSize: 4.5,
+              fontSize: compact ? 4 : 4.5,
               fontWeight: FontWeight.w700,
               letterSpacing: isPegi ? 0 : 1.0,
               height: 1,
@@ -136,10 +164,10 @@ class ContentRatingsStrip extends StatelessWidget {
     );
   }
 
-  Widget _circleBadge(String label) {
+  Widget _circleBadge(String label, {required bool compact}) {
     return Container(
-      width: 30,
-      height: 30,
+      width: compact ? 28 : 30,
+      height: compact ? 28 : 30,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: _badgeGradient,
@@ -151,9 +179,9 @@ class ContentRatingsStrip extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           color: ObrohColors.obsidian950,
-          fontSize: 11,
+          fontSize: compact ? 10.5 : 11,
           fontWeight: FontWeight.w900,
           height: 1,
         ),

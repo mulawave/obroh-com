@@ -112,6 +112,26 @@ router.get("/public", async (_req, res) => {
   }
 });
 
+// GET /api/family-tree/registration-branches - Public branch list for registration forms
+router.get("/registration-branches", async (_req, res) => {
+  try {
+    const branches = await prisma.familyBranch.findMany({
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        level: true,
+      },
+      orderBy: [{ level: "asc" }, { name: "asc" }],
+      take: 1000,
+    });
+    res.json({ branches, total: branches.length });
+  } catch (err) {
+    console.error("Registration branches fetch error:", err);
+    res.status(500).json({ error: "Failed to load registration branches" });
+  }
+});
+
 // GET /api/family-tree - Get full family tree (authenticated users only)
 router.get("/", ...auth, async (_req: AuthRequest, res) => {
   try {

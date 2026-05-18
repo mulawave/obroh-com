@@ -1,8 +1,10 @@
 ﻿import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../services/request_guard.dart';
@@ -11,8 +13,6 @@ import '../../widgets/avatar_circle.dart';
 import '../../widgets/gold_card.dart';
 
 import '../../widgets/shimmer_loading.dart';
-import '../portfolio/portfolio_screen.dart';
-import '../profile/profile_screen.dart';
 // ─── Post Categories ──────────────────────────────────────────────────────────
 
 const _kComposerCategories = [
@@ -65,93 +65,47 @@ const _kComposerCategories = [
 
 class TimelineScreen extends StatefulWidget {
   final String? initialPostId;
-  
-  const TimelineScreen({
-    super.key,
-    this.initialPostId,
-  });
-  
+
+  const TimelineScreen({super.key, this.initialPostId});
+
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
 }
 
-class _TimelineScreenState extends State<TimelineScreen>
-    with SingleTickerProviderStateMixin {
-  List<Map<String, dynamic>> _posts = [];
-  bool _loading = true;
-  bool _posting = false;
-  String _category = 'general';
-  final _postCtrl = TextEditingController();
-  final List<XFile> _pickedMedia = [];
-  final _picker = ImagePicker();
-  bool _mediaRationaleShown = false;
-  late ScrollController _scrollController;
+// Wraps a picked file with an optional pre-generated video thumbnail.
+class _MediaItem {
+  final XFile file;
+  final Uint8List? videoThumbnail; // non-null only for video files
+  const _MediaItem(this.file, [this.videoThumbnail]);
+  bool get isVideo => videoThumbnail != null;
+}
 
-  late AnimationController _animCtrl;
-  late Animation<double> _fade;
+class _TimelineComposerSheet extends StatefulWidget {
+  final dynamic user;
+  final Future<void> Function() onPostSuccess;
+
+  const _TimelineComposerSheet({
+    required this.user,
+    required this.onPostSuccess,
+  });
 
   @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _fade = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
-    _load();
-  }
+  State<_TimelineComposerSheet> createState() => _TimelineComposerSheetState();
+}
+
+class _TimelineComposerSheetState extends State<_TimelineComposerSheet> {
+  bool _posting = false;
+  double _uploadProgress = 0.0;
+  String _category = 'general';
+  final _postCtrl = TextEditingController();
+  final List<_MediaItem> _pickedMedia = [];
+  final _picker = ImagePicker();
+  bool _mediaRationaleShown = false;
 
   @override
   void dispose() {
-    _animCtrl.dispose();
     _postCtrl.dispose();
-    _scrollController.dispose();
     super.dispose();
-  }
-
-  Future<void> _scrollToPost(String postId) async {
-    // Wait for the list to be built and scrolled
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    if (!mounted) return;
-    
-    // Find the index of the post
-    final index = _posts.indexWhere((p) => p['id'].toString() == postId);
-    if (index == -1) return;
-
-    // Scroll to the post
-    await _scrollController.animateTo(
-      index * 140, // Approximate height of each post item
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  Future<void> _load() async {
-    final token = context.read<AuthService>().token;
-    RequestGuard.requireSessionOrReauth(context, token);
-    if (token == null) return;
-    try {
-      final res = await ApiService.get('/timeline?limit=30', token: token);
-      if (mounted) {
-        setState(() {
-          _posts = List<Map<String, dynamic>>.from(res['posts'] ?? []);
-          _loading = false;
-        });
-        _animCtrl.forward(from: 0);
-        
-        // Scroll to initial post if provided
-        if (widget.initialPostId != null) {
-          await _scrollToPost(widget.initialPostId!);
-        }
-      }
-    } on ApiException catch (e) {
-      await RequestGuard.handleApiException(context, e, onRetry: _load);
-      if (mounted) setState(() => _loading = false);
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   Future<void> _pickImages() async {
@@ -162,7 +116,9 @@ class _TimelineScreenState extends State<TimelineScreen>
     );
     if (picked.isNotEmpty && mounted) {
       setState(() {
-        _pickedMedia.addAll(picked.take(10 - _pickedMedia.length));
+        for (final file in picked.take(10 - _pickedMedia.length)) {
+          _pickedMedia.add(_MediaItem(file));
+        }
       });
     }
   }
@@ -171,9 +127,18 @@ class _TimelineScreenState extends State<TimelineScreen>
     await _showMediaRationaleIfNeeded();
     final picked = await _picker.pickVideo(source: ImageSource.gallery);
     if (picked != null && mounted) {
-      setState(() {
-        if (_pickedMedia.length < 12) _pickedMedia.add(picked);
-      });
+      if (_pickedMedia.length >= 12) return;
+      final thumb = await VideoThumbnail.thumbnailData(
+        video: picked.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 200,
+        quality: 75,
+      );
+      if (mounted) {
+        setState(() {
+          _pickedMedia.add(_MediaItem(picked, thumb));
+        });
+      }
     }
   }
 
@@ -216,6 +181,7 @@ class _TimelineScreenState extends State<TimelineScreen>
         if (mounted) setState(() => _posting = false);
         return;
       }
+
       final fields = <String, String>{};
       if (_postCtrl.text.trim().isNotEmpty) {
         fields['content'] = _postCtrl.text.trim();
@@ -233,13 +199,22 @@ class _TimelineScreenState extends State<TimelineScreen>
           '/timeline',
           fields: fields,
           fileField: 'media',
-          filePaths: _pickedMedia.map((f) => f.path).toList(),
+          filePaths: _pickedMedia.map((m) => m.file.path).toList(),
           token: token,
+          onProgress: (progress) {
+            if (mounted) setState(() => _uploadProgress = progress);
+          },
         );
       }
-      _postCtrl.clear();
-      setState(() => _pickedMedia.clear());
-      await _load();
+
+      if (!mounted) return;
+      setState(() {
+        _postCtrl.clear();
+        _pickedMedia.clear();
+        _uploadProgress = 0.0;
+        _category = 'general';
+      });
+      await widget.onPostSuccess();
     } on ApiException catch (e) {
       await RequestGuard.handleApiException(context, e);
     } catch (e) {
@@ -256,290 +231,13 @@ class _TimelineScreenState extends State<TimelineScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _posting = false);
-    }
-  }
-
-  Future<void> _toggleLike(String postId) async {
-    final token = context.read<AuthService>().token;
-    if (token == null) return;
-    try {
-      await ApiService.post('/timeline/$postId/like', token: token);
-      await _load();
-    } catch (_) {}
-  }
-
-  Future<void> _deletePost(String postId) async {
-    final token = context.read<AuthService>().token;
-    RequestGuard.requireSessionOrReauth(context, token);
-    if (token == null) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: ObrohColors.obsidian800,
-        title: const Text(
-          'Delete Post',
-          style: TextStyle(color: ObrohColors.foreground),
-        ),
-        content: const Text(
-          'Remove this post from the family timeline?',
-          style: TextStyle(color: ObrohColors.foreground60),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: ObrohColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      await ApiService.delete('/timeline/$postId', token: token);
-      await _load();
-    } on ApiException catch (e) {
-      await RequestGuard.handleApiException(
-        context,
-        e,
-        onRetry: () => _deletePost(postId),
-      );
-    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed: $e'),
-            backgroundColor: ObrohColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        setState(() {
+          _posting = false;
+          _uploadProgress = 0.0;
+        });
       }
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = context.watch<AuthService>().user;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Family Timeline')),
-      body: Column(
-        children: [
-          _buildComposer(user),
-          Expanded(
-            child: _loading
-                ? ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: 5,
-                    itemBuilder: (_, _) => const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: ShimmerLoading(height: 120, borderRadius: 16),
-                    ),
-                  )
-                : _posts.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.article_outlined,
-                          color: ObrohColors.gold400.withValues(alpha: 0.3),
-                          size: 48,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No posts yet. Be the first!',
-                          style: TextStyle(
-                            color: ObrohColors.foreground.withValues(
-                              alpha: 0.4,
-                            ),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : FadeTransition(
-                    opacity: _fade,
-                    child: RefreshIndicator(
-                      color: ObrohColors.gold400,
-                      onRefresh: _load,
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        itemCount: _posts.length,
-                        itemBuilder: (_, i) => _PostCard(
-                          post: _posts[i],
-                          currentUserId: user?.id ?? '',
-                          onLike: () =>
-                              _toggleLike(_posts[i]['id']?.toString() ?? ''),
-                          onDelete:
-                              (user?.id ==
-                                  (_posts[i]['author'] as Map?)?['id']
-                                      ?.toString())
-                              ? () => _deletePost(
-                                  _posts[i]['id']?.toString() ?? '',
-                                )
-                              : null,
-                          token: context.read<AuthService>().token ?? '',
-                          onRefresh: _load,
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildComposer(dynamic user) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: ObrohColors.obsidian900,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ObrohColors.gold400.withValues(alpha: 0.16)),
-        boxShadow: [
-          BoxShadow(
-            color: ObrohColors.obsidian950.withValues(alpha: 0.55),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AvatarCircle(
-                imageUrl: user?.profileImage,
-                initials: user?.initials ?? '??',
-                size: 38,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _postCtrl,
-                  maxLines: 4,
-                  minLines: 2,
-                  style: const TextStyle(
-                    color: ObrohColors.foreground,
-                    fontSize: 13,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Share something with the family...',
-                    hintStyle: TextStyle(
-                      color: ObrohColors.foreground.withValues(alpha: 0.32),
-                      fontSize: 13,
-                    ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: ObrohColors.gold400.withValues(alpha: 0.15),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: ObrohColors.gold400.withValues(alpha: 0.15),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _iconBtn(Icons.image_rounded, _pickImages, tooltip: 'Add photos'),
-              const SizedBox(width: 8),
-              _iconBtn(
-                Icons.videocam_rounded,
-                _pickVideo,
-                tooltip: 'Add video',
-              ),
-            ],
-          ),
-          if (_pickedMedia.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _buildMediaPreviews(),
-          ],
-          const SizedBox(height: 10),
-          Container(
-            height: 1,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  ObrohColors.gold200.withValues(alpha: 0.05),
-                  ObrohColors.gold400.withValues(alpha: 0.6),
-                  ObrohColors.gold200.withValues(alpha: 0.05),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildCategoryComposerRow(),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: _posting ? null : _createPost,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF14532D),
-                disabledBackgroundColor: const Color(
-                  0xFF14532D,
-                ).withValues(alpha: 0.75),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: Color(0xFF166534)),
-                ),
-                elevation: 0,
-              ),
-              icon: _posting
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(Colors.white),
-                      ),
-                    )
-                  : const Icon(Icons.send_rounded, size: 16),
-              label: Text(
-                _posting ? 'Posting...' : 'Post to Feed',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _iconBtn(IconData icon, VoidCallback onTap, {String? tooltip}) =>
@@ -561,6 +259,33 @@ class _TimelineScreenState extends State<TimelineScreen>
         ),
       );
 
+  Widget _buildUploadProgress() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: _uploadProgress > 0 ? _uploadProgress : null,
+            minHeight: 4,
+            backgroundColor: ObrohColors.obsidian800,
+            valueColor: const AlwaysStoppedAnimation(ObrohColors.gold400),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _uploadProgress > 0
+              ? 'Uploading ${(_uploadProgress * 100).round()}%'
+              : 'Preparing upload...',
+          style: TextStyle(
+            fontSize: 10,
+            color: ObrohColors.gold400.withValues(alpha: 0.7),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMediaPreviews() {
     return SizedBox(
       height: 90,
@@ -569,7 +294,7 @@ class _TimelineScreenState extends State<TimelineScreen>
         padding: const EdgeInsets.fromLTRB(0, 2, 0, 2),
         itemCount: _pickedMedia.length,
         itemBuilder: (_, i) {
-          final f = _pickedMedia[i];
+          final item = _pickedMedia[i];
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Stack(
@@ -579,17 +304,30 @@ class _TimelineScreenState extends State<TimelineScreen>
                   child: SizedBox(
                     width: 74,
                     height: 74,
-                    child: Image.file(
-                      File(f.path),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        color: ObrohColors.obsidian800,
-                        child: const Icon(
-                          Icons.videocam_rounded,
-                          color: ObrohColors.gold400,
-                        ),
-                      ),
-                    ),
+                    child: item.isVideo
+                        ? Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              item.videoThumbnail != null
+                                  ? Image.memory(
+                                      item.videoThumbnail!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Container(color: ObrohColors.obsidian800),
+                              const Align(
+                                alignment: Alignment.bottomRight,
+                                child: Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Image.file(File(item.file.path), fit: BoxFit.cover),
                   ),
                 ),
                 Positioned(
@@ -673,6 +411,414 @@ class _TimelineScreenState extends State<TimelineScreen>
             ),
           );
         },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: ObrohColors.obsidian900,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ObrohColors.gold400.withValues(alpha: 0.16)),
+        boxShadow: [
+          BoxShadow(
+            color: ObrohColors.obsidian950.withValues(alpha: 0.55),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AvatarCircle(
+                imageUrl: widget.user?.profileImage,
+                initials: widget.user?.initials ?? '??',
+                size: 38,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _postCtrl,
+                  maxLines: 4,
+                  minLines: 2,
+                  style: const TextStyle(
+                    color: ObrohColors.foreground,
+                    fontSize: 13,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Share something with the family...',
+                    hintStyle: TextStyle(
+                      color: ObrohColors.foreground.withValues(alpha: 0.32),
+                      fontSize: 13,
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: ObrohColors.gold400.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: ObrohColors.gold400.withValues(alpha: 0.15),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _iconBtn(Icons.image_rounded, _pickImages, tooltip: 'Add photos'),
+              const SizedBox(width: 8),
+              _iconBtn(
+                Icons.videocam_rounded,
+                _pickVideo,
+                tooltip: 'Add video',
+              ),
+            ],
+          ),
+          if (_posting && _pickedMedia.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildUploadProgress(),
+          ],
+          if (_pickedMedia.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildMediaPreviews(),
+          ],
+          const SizedBox(height: 10),
+          Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  ObrohColors.gold200.withValues(alpha: 0.05),
+                  ObrohColors.gold400.withValues(alpha: 0.6),
+                  ObrohColors.gold200.withValues(alpha: 0.05),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildCategoryComposerRow(),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: _posting ? null : _createPost,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF14532D),
+                disabledBackgroundColor: const Color(
+                  0xFF14532D,
+                ).withValues(alpha: 0.75),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: const BorderSide(color: Color(0xFF166534)),
+                ),
+                elevation: 0,
+              ),
+              icon: _posting
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.send_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+              label: Text(
+                _posting ? 'Posting...' : 'Post to Feed',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineScreenState extends State<TimelineScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  List<Map<String, dynamic>> _posts = [];
+  bool _loading = true;
+  late ScrollController _scrollController;
+
+  late AnimationController _animCtrl;
+  late Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scrollController = ScrollController();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _fade = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _load();
+  }
+
+  void _showComposerBottomSheet(BuildContext ctx) {
+    final user = context.read<AuthService>().user;
+    showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: ObrohColors.obsidian900,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (mdCtx) => Padding(
+        padding: MediaQuery.of(mdCtx).viewInsets,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 24),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _TimelineComposerSheet(user: user, onPostSuccess: _load),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _animCtrl.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _load();
+    }
+  }
+
+  /// Public method to refresh timeline data from parent widgets
+  void refreshData() {
+    _load();
+  }
+
+  Future<void> _scrollToPost(String postId) async {
+    // Wait for the list to be built and scrolled
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    // Find the index of the post
+    final index = _posts.indexWhere((p) => p['id'].toString() == postId);
+    if (index == -1) return;
+
+    // Scroll to the post
+    await _scrollController.animateTo(
+      index * 140, // Approximate height of each post item
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  Future<void> _load() async {
+    final token = context.read<AuthService>().token;
+    RequestGuard.requireSessionOrReauth(context, token);
+    if (token == null) return;
+    try {
+      final res = await ApiService.get('/timeline?limit=30', token: token);
+      if (mounted) {
+        setState(() {
+          _posts = List<Map<String, dynamic>>.from(res['posts'] ?? []);
+          _loading = false;
+        });
+        _animCtrl.forward(from: 0);
+
+        // Scroll to initial post if provided
+        if (widget.initialPostId != null) {
+          await _scrollToPost(widget.initialPostId!);
+        }
+      }
+    } on ApiException catch (e) {
+      await RequestGuard.handleApiException(context, e, onRetry: _load);
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _toggleLike(String postId) async {
+    final token = context.read<AuthService>().token;
+    if (token == null) return;
+    try {
+      await ApiService.post('/timeline/$postId/like', token: token);
+      await _load();
+    } catch (_) {}
+  }
+
+  Future<void> _deletePost(String postId) async {
+    final token = context.read<AuthService>().token;
+    RequestGuard.requireSessionOrReauth(context, token);
+    if (token == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: ObrohColors.obsidian800,
+        title: const Text(
+          'Delete Post',
+          style: TextStyle(color: ObrohColors.foreground),
+        ),
+        content: const Text(
+          'Remove this post from the family timeline?',
+          style: TextStyle(color: ObrohColors.foreground60),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: ObrohColors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ApiService.delete('/timeline/$postId', token: token);
+      await _load();
+    } on ApiException catch (e) {
+      await RequestGuard.handleApiException(
+        context,
+        e,
+        onRetry: () => _deletePost(postId),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: ObrohColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().user;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Family Timeline')),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showComposerBottomSheet(context),
+        backgroundColor: ObrohColors.gold400,
+        child: const Icon(Icons.edit_rounded, color: ObrohColors.obsidian950),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: _loading
+                ? ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 5,
+                    itemBuilder: (_, _) => const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: ShimmerLoading(height: 120, borderRadius: 16),
+                    ),
+                  )
+                : _posts.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.article_outlined,
+                          color: ObrohColors.gold400.withValues(alpha: 0.3),
+                          size: 48,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No posts yet. Be the first!',
+                          style: TextStyle(
+                            color: ObrohColors.foreground.withValues(
+                              alpha: 0.4,
+                            ),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : FadeTransition(
+                    opacity: _fade,
+                    child: RefreshIndicator(
+                      color: ObrohColors.gold400,
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        itemCount: _posts.length,
+                        itemBuilder: (_, i) => _PostCard(
+                          post: _posts[i],
+                          currentUserId: user?.id ?? '',
+                          onLike: () =>
+                              _toggleLike(_posts[i]['id']?.toString() ?? ''),
+                          onDelete:
+                              (user?.id ==
+                                  (_posts[i]['author'] as Map?)?['id']
+                                      ?.toString())
+                              ? () => _deletePost(
+                                  _posts[i]['id']?.toString() ?? '',
+                                )
+                              : null,
+                          token: context.read<AuthService>().token ?? '',
+                          onRefresh: _load,
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -944,7 +1090,14 @@ class _PostCardState extends State<_PostCard> {
             // Comments section
             if (_showComments) ...[
               const Divider(height: 16, thickness: 1),
-              ...comments.map((c) => _CommentTile(comment: c)),
+              ...comments.map(
+                (c) => _CommentTile(
+                  comment: c,
+                  token: widget.token,
+                  currentUserId: widget.currentUserId,
+                  onRefresh: widget.onRefresh,
+                ),
+              ),
               const SizedBox(height: 6),
               Row(
                 children: [
@@ -1075,13 +1228,104 @@ class _PostCardState extends State<_PostCard> {
 
 // ─── Comment Tile ─────────────────────────────────────────────────────────────
 
-class _CommentTile extends StatelessWidget {
+class _CommentTile extends StatefulWidget {
   final Map<String, dynamic> comment;
-  const _CommentTile({required this.comment});
+  final String token;
+  final String currentUserId;
+  final VoidCallback onRefresh;
+
+  const _CommentTile({
+    required this.comment,
+    required this.token,
+    required this.currentUserId,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_CommentTile> createState() => _CommentTileState();
+}
+
+class _CommentTileState extends State<_CommentTile> {
+  static const _reactionOptions = ['👍', '❤️', '😂', '🙏'];
+
+  final _replyCtrl = TextEditingController();
+  bool _showReplyComposer = false;
+  bool _postingReply = false;
+  String? _reactingEmoji;
+
+  @override
+  void dispose() {
+    _replyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addReply() async {
+    if (_replyCtrl.text.trim().isEmpty || _postingReply) return;
+    setState(() => _postingReply = true);
+    try {
+      await ApiService.post(
+        '/timeline/comments/${widget.comment['id']}/replies',
+        token: widget.token,
+        body: {'content': _replyCtrl.text.trim()},
+      );
+      _replyCtrl.clear();
+      if (mounted) {
+        setState(() => _showReplyComposer = false);
+      }
+      widget.onRefresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to add reply.')));
+      }
+    } finally {
+      if (mounted) setState(() => _postingReply = false);
+    }
+  }
+
+  Future<void> _toggleReaction(String emoji) async {
+    if (_reactingEmoji != null) return;
+    setState(() => _reactingEmoji = emoji);
+    try {
+      await ApiService.post(
+        '/timeline/comments/${widget.comment['id']}/reactions',
+        token: widget.token,
+        body: {'emoji': emoji},
+      );
+      widget.onRefresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update reaction.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reactingEmoji = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final comment = widget.comment;
     final author = comment['author'] as Map<String, dynamic>? ?? {};
+    final replies = List<Map<String, dynamic>>.from(comment['replies'] ?? []);
+    final reactions = List<Map<String, dynamic>>.from(
+      comment['reactions'] ?? [],
+    );
+    final currentReaction = reactions
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (reaction) => reaction?['userId'] == widget.currentUserId,
+          orElse: () => null,
+        )?['emoji']
+        ?.toString();
+    final reactionCounts = <String, int>{};
+    for (final reaction in reactions) {
+      final emoji = reaction['emoji']?.toString() ?? '👍';
+      reactionCounts[emoji] = (reactionCounts[emoji] ?? 0) + 1;
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1095,33 +1339,247 @@ class _CommentTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: ObrohColors.obsidian700.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${author['firstName'] ?? ''} ${author['lastName'] ?? ''}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: ObrohColors.gold400,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    comment['content']?.toString() ?? '',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: ObrohColors.foreground.withValues(alpha: 0.8),
-                    ),
+                  decoration: BoxDecoration(
+                    color: ObrohColors.obsidian700.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${author['firstName'] ?? ''} ${author['lastName'] ?? ''}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: ObrohColors.gold400,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        comment['content']?.toString() ?? '',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: ObrohColors.foreground.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _reactionOptions.map((emoji) {
+                    final selected = currentReaction == emoji;
+                    final busy = _reactingEmoji == emoji;
+                    return GestureDetector(
+                      onTap: busy ? null : () => _toggleReaction(emoji),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? ObrohColors.gold400.withValues(alpha: 0.16)
+                              : ObrohColors.obsidian800,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: selected
+                                ? ObrohColors.gold400.withValues(alpha: 0.45)
+                                : ObrohColors.gold400.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Text(
+                          busy ? '...' : emoji,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: ObrohColors.foreground,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                if (reactionCounts.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: reactionCounts.entries
+                        .map(
+                          (entry) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: ObrohColors.obsidian800,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${entry.key} ${entry.value}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: ObrohColors.foreground.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ],
-              ),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () =>
+                      setState(() => _showReplyComposer = !_showReplyComposer),
+                  child: Text(
+                    replies.isEmpty
+                        ? 'Reply'
+                        : 'Reply • ${replies.length} ${replies.length == 1 ? 'reply' : 'replies'}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: ObrohColors.foreground.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ),
+                if (replies.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...replies.map((reply) {
+                    final replyAuthor =
+                        reply['author'] as Map<String, dynamic>? ?? {};
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: ObrohColors.obsidian800.withValues(
+                            alpha: 0.85,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${replyAuthor['firstName'] ?? ''} ${replyAuthor['lastName'] ?? ''}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: ObrohColors.foreground.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              reply['content']?.toString() ?? '',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: ObrohColors.foreground.withValues(
+                                  alpha: 0.75,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+                if (_showReplyComposer) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replyCtrl,
+                          style: const TextStyle(
+                            color: ObrohColors.foreground,
+                            fontSize: 12,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Write a reply...',
+                            hintStyle: TextStyle(
+                              color: ObrohColors.foreground.withValues(
+                                alpha: 0.3,
+                              ),
+                              fontSize: 12,
+                            ),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(
+                                color: ObrohColors.gold400.withValues(
+                                  alpha: 0.12,
+                                ),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide(
+                                color: ObrohColors.gold400.withValues(
+                                  alpha: 0.12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _postingReply
+                          ? const SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(
+                                  ObrohColors.gold400,
+                                ),
+                              ),
+                            )
+                          : GestureDetector(
+                              onTap: _addReply,
+                              child: Container(
+                                width: 30,
+                                height: 30,
+                                decoration: const BoxDecoration(
+                                  color: ObrohColors.gold400,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.subdirectory_arrow_right_rounded,
+                                  size: 14,
+                                  color: ObrohColors.obsidian950,
+                                ),
+                              ),
+                            ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -1177,6 +1635,7 @@ class _MediaGridState extends State<_MediaGrid> {
         child: _NetImg(
           images[0],
           maxHeight: 320,
+          fit: BoxFit.contain,
           onTap: () => _openLightbox(0),
         ),
       );
@@ -1319,15 +1778,22 @@ class _NetImg extends StatelessWidget {
   final Map<String, dynamic> media;
   final double? aspectRatio;
   final double? maxHeight;
+  final BoxFit fit;
   final VoidCallback? onTap;
-  const _NetImg(this.media, {this.aspectRatio, this.maxHeight, this.onTap});
+  const _NetImg(
+    this.media, {
+    this.aspectRatio,
+    this.maxHeight,
+    this.fit = BoxFit.cover,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final url = ApiService.imageUrl(media['url']?.toString());
     Widget img = Image.network(
       url,
-      fit: BoxFit.cover,
+      fit: fit,
       errorBuilder: (_, _, _) => Container(
         color: ObrohColors.obsidian800,
         child: const Icon(
@@ -1342,10 +1808,13 @@ class _NetImg extends StatelessWidget {
     if (maxHeight != null) {
       img = ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight!),
-        child: img,
+        child: Center(child: img),
       );
     }
-    return GestureDetector(onTap: onTap, child: img);
+    return SizedBox(
+      width: double.infinity,
+      child: GestureDetector(onTap: onTap, child: img),
+    );
   }
 }
 
@@ -1387,7 +1856,7 @@ class _VideoPlayerState extends State<_VideoPlayer> {
     );
 
     _initializeVideoPlayerFuture = _controller.initialize().catchError((error) {
-      print("Video initialization error: $error");
+      debugPrint('Video initialization error: $error');
       return null;
     });
 
@@ -1398,7 +1867,9 @@ class _VideoPlayerState extends State<_VideoPlayer> {
     if (!mounted) return;
     if (_controller.value.isPlaying && _showPlayButton) {
       setState(() => _showPlayButton = false);
-    } else if (!_controller.value.isPlaying && !_showPlayButton && _controller.value.position != Duration.zero) {
+    } else if (!_controller.value.isPlaying &&
+        !_showPlayButton &&
+        _controller.value.position != Duration.zero) {
       // Only hide play button if video is not at the start
       if (_controller.value.position != Duration.zero) {
         return;
@@ -1416,7 +1887,7 @@ class _VideoPlayerState extends State<_VideoPlayer> {
   @override
   Widget build(BuildContext context) {
     final thumbnailUrl = widget.video['thumbnailUrl']?.toString();
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
@@ -1501,9 +1972,8 @@ class _VideoPlayerState extends State<_VideoPlayer> {
                       Image.network(
                         ApiService.imageUrl(thumbnailUrl),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: ObrohColors.obsidian900,
-                        ),
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(color: ObrohColors.obsidian900),
                       )
                     else
                       Container(color: ObrohColors.obsidian900),
@@ -1524,6 +1994,7 @@ class _VideoPlayerState extends State<_VideoPlayer> {
       ),
     );
   }
+}
 
 class _Lightbox extends StatefulWidget {
   final List<Map<String, dynamic>> images;
@@ -1540,32 +2011,52 @@ class _Lightbox extends StatefulWidget {
 
 class _LightboxState extends State<_Lightbox> {
   late int _idx;
+  late final PageController _pageController;
+
   @override
   void initState() {
     super.initState();
     _idx = widget.startIndex;
+    _pageController = PageController(initialPage: widget.startIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final img = widget.images[_idx];
-    final url = ApiService.imageUrl(img['url']?.toString() ?? '');
     return GestureDetector(
       onTap: widget.onClose,
       child: Container(
         color: ObrohColors.obsidian950.withValues(alpha: 0.95),
         child: Stack(
           children: [
-            Center(
-              child: Image.network(
-                url,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: ObrohColors.foreground40,
-                  size: 48,
-                ),
-              ),
+            PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) => setState(() => _idx = index),
+              itemCount: widget.images.length,
+              itemBuilder: (context, index) {
+                final img = widget.images[index];
+                final url = ApiService.imageUrl(img['url']?.toString() ?? '');
+                return Center(
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 3,
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.broken_image_outlined,
+                        color: ObrohColors.foreground40,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             Positioned(
               top: 8,
@@ -1586,54 +2077,6 @@ class _LightboxState extends State<_Lightbox> {
                 ),
               ),
             ),
-            if (_idx > 0)
-              Positioned(
-                left: 8,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _idx--);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: ObrohColors.obsidian800.withValues(alpha: 0.8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.chevron_left,
-                        color: ObrohColors.foreground,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            if (_idx < widget.images.length - 1)
-              Positioned(
-                right: 8,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _idx++);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: ObrohColors.obsidian800.withValues(alpha: 0.8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.chevron_right,
-                        color: ObrohColors.foreground,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             Positioned(
               bottom: 12,
               left: 0,

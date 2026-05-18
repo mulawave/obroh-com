@@ -13,9 +13,6 @@ import '../../widgets/loading_button.dart';
 import '../../widgets/shimmer_loading.dart';
 
 class PortfolioScreen extends StatefulWidget {
-  const PortfolioScreen({super.key});
-
-class PortfolioScreen extends StatefulWidget {
   final String? viewingUserId;
 
   const PortfolioScreen({super.key, this.viewingUserId});
@@ -23,12 +20,13 @@ class PortfolioScreen extends StatefulWidget {
   @override
   State<PortfolioScreen> createState() => _PortfolioScreenState();
 }
+
 class _PortfolioScreenState extends State<PortfolioScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _portfolio;
   bool _loading = true;
   bool _busy = false;
-    bool get _isOwnPortfolio => widget.viewingUserId == null;
+  bool get _isOwnPortfolio => widget.viewingUserId == null;
   late TabController _tabController;
   int _selectedTab = 0;
   final ImagePicker _imagePicker = ImagePicker();
@@ -109,10 +107,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       return;
     }
     try {
-        final endpoint = _isOwnPortfolio
+      final endpoint = _isOwnPortfolio
           ? '/portfolio'
           : '/portfolio/members/${widget.viewingUserId}';
-        final res = await ApiService.get(endpoint, token: token);
+      final res = await ApiService.get(endpoint, token: token);
       if (mounted) {
         setState(() {
           _portfolio = (res['portfolio'] is Map<String, dynamic>)
@@ -1285,7 +1283,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             Tab(text: 'Education'),
           ],
         ),
-      ),
         actions: [
           if (_selectedTab == 0 && _isOwnPortfolio)
             IconButton(
@@ -1294,6 +1291,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               tooltip: 'Edit Settings',
             ),
         ],
+      ),
       body: _loading
           ? Padding(
               padding: const EdgeInsets.all(16),
@@ -1399,7 +1397,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               ],
             ),
           ),
-        ],
           const SizedBox(height: 12),
           if (_isOwnPortfolio)
             LoadingButton(
@@ -1412,6 +1409,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   ? Icons.lock_rounded
                   : Icons.public_rounded,
             ),
+        ],
       ),
     );
   }
@@ -1426,93 +1424,93 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         children: [
           if (_isOwnPortfolio)
             GoldCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Add Gallery Images',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: ObrohColors.gold400,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (_galleryFilesForUpload.isNotEmpty) ...[
-                  Text(
-                    '${_galleryFilesForUpload.length} image(s) selected',
-                    style: const TextStyle(
-                      color: ObrohColors.foreground,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 100,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _galleryFilesForUpload.length,
-                      itemBuilder: (ctx, idx) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: ObrohColors.obsidian800,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Image.file(
-                                  File(_galleryFilesForUpload[idx].path),
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: GestureDetector(
-                                  onTap: () => _removeGalleryFile(idx),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: ObrohColors.error,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    padding: const EdgeInsets.all(4),
-                                    child: const Icon(
-                                      Icons.close,
-                                      size: 16,
-                                      color: ObrohColors.obsidian950,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Add Gallery Images',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: ObrohColors.gold400,
                     ),
                   ),
                   const SizedBox(height: 12),
-                ],
-                ElevatedButton.icon(
-                  onPressed: _pickGalleryImages,
-                  icon: const Icon(Icons.image_rounded),
-                  label: const Text('Pick Images'),
-                ),
-                if (_galleryFilesForUpload.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  LoadingButton(
-                    onPressed: _uploadAllGalleryImages,
-                    loading: _busy,
-                    label: 'Upload All',
-                    icon: Icons.cloud_upload_rounded,
+                  if (_galleryFilesForUpload.isNotEmpty) ...[
+                    Text(
+                      '${_galleryFilesForUpload.length} image(s) selected',
+                      style: const TextStyle(
+                        color: ObrohColors.foreground,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _galleryFilesForUpload.length,
+                        itemBuilder: (ctx, idx) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    color: ObrohColors.obsidian800,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Image.file(
+                                    File(_galleryFilesForUpload[idx].path),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: GestureDetector(
+                                    onTap: () => _removeGalleryFile(idx),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        color: ObrohColors.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      padding: const EdgeInsets.all(4),
+                                      child: const Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: ObrohColors.obsidian950,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  ElevatedButton.icon(
+                    onPressed: _pickGalleryImages,
+                    icon: const Icon(Icons.image_rounded),
+                    label: const Text('Pick Images'),
                   ),
+                  if (_galleryFilesForUpload.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    LoadingButton(
+                      onPressed: _uploadAllGalleryImages,
+                      loading: _busy,
+                      label: 'Upload All',
+                      icon: Icons.cloud_upload_rounded,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
           const SizedBox(height: 16),
           if (gallery.isEmpty)
             Center(
@@ -1559,7 +1557,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                           ),
                         ),
                       ],
-                    ],
                       const SizedBox(height: 8),
                       if (_isOwnPortfolio)
                         Align(
@@ -1574,6 +1571,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                             ),
                           ),
                         ),
+                    ],
                   ),
                 ),
               );

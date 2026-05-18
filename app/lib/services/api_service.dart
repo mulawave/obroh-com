@@ -175,26 +175,69 @@ class ApiService {
   }
 
   /// Upload multiple files to the same field name (e.g. media[] for timeline posts).
+  /// [onProgress] receives values from 0.0 to 1.0 as bytes are sent.
   static Future<Map<String, dynamic>> multipartPostFiles(
     String endpoint, {
     required Map<String, String> fields,
     required String fileField,
     required List<String> filePaths,
     String? token,
+    void Function(double progress)? onProgress,
   }) async {
-    final request = http.MultipartRequest(
+    final multipart = http.MultipartRequest(
       'POST',
       Uri.parse('$_baseUrl$endpoint'),
     );
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    request.fields.addAll(fields);
+    if (token != null) multipart.headers['Authorization'] = 'Bearer $token';
+    multipart.fields.addAll(fields);
     for (final path in filePaths) {
-      request.files.add(await http.MultipartFile.fromPath(fileField, path));
+      multipart.files.add(await http.MultipartFile.fromPath(fileField, path));
     }
+
     try {
-      final streamedRes = await request.send().timeout(AppConfig.httpTimeout);
-      final res = await http.Response.fromStream(streamedRes);
-      return _handleResponse(res);
+      if (onProgress != null) {
+        // Stream the request body through a byte-counting wrapper for progress.
+        // finalize() sets the content-type header (with boundary) on the multipart object.
+        final body = multipart.finalize();
+        final total = multipart.contentLength;
+        int sent = 0;
+
+        final streamed = http.StreamedRequest(
+          'POST',
+          Uri.parse('$_baseUrl$endpoint'),
+        );
+        // Copy headers after finalize() — content-type + boundary are now present
+        streamed.headers.addAll(multipart.headers);
+        if (total > 0) streamed.contentLength = total;
+
+        body.listen(
+          (chunk) {
+            sent += chunk.length;
+            if (total > 0) onProgress(sent / total);
+            streamed.sink.add(chunk);
+          },
+          onDone: () => streamed.sink.close(),
+          onError: (Object e) => streamed.sink.addError(e),
+          cancelOnError: true,
+        );
+
+        final client = http.Client();
+        try {
+          final streamedRes = await client
+              .send(streamed)
+              .timeout(AppConfig.httpTimeout);
+          final res = await http.Response.fromStream(streamedRes);
+          return _handleResponse(res);
+        } finally {
+          client.close();
+        }
+      } else {
+        final streamedRes = await multipart.send().timeout(
+          AppConfig.httpTimeout,
+        );
+        final res = await http.Response.fromStream(streamedRes);
+        return _handleResponse(res);
+      }
     } on TimeoutException {
       throw ApiException(
         'Upload timed out. Check your connection and retry.',

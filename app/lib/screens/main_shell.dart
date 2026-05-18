@@ -23,19 +23,25 @@ class _MainShellState extends State<MainShell> {
   int _unreadTimelinePosts = 0;
   Timer? _pollTimer;
 
-  final _screens = const [
-    DashboardScreen(),
-    MessagesScreen(),
-    TimelineScreen(),
-    ProfileScreen(),
-    MoreScreen(),
-  ];
+  final _timelineKey = GlobalKey<State>();
+
+  late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    _screens = [
+      const DashboardScreen(),
+      const MessagesScreen(),
+      TimelineScreen(key: _timelineKey),
+      const ProfileScreen(),
+      const MoreScreen(),
+    ];
     _fetchCounts();
-    _pollTimer = Timer.periodic(const Duration(minutes: 2), (_) => _fetchCounts());
+    _pollTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _fetchCounts(),
+    );
   }
 
   @override
@@ -49,8 +55,14 @@ class _MainShellState extends State<MainShell> {
     if (token == null) return;
     try {
       final results = await Future.wait([
-        ApiService.get('/messages/unread-count', token: token).catchError((_) => {'count': 0}),
-        ApiService.get('/timeline/unread-count', token: token).catchError((_) => {'count': 0}),
+        ApiService.get(
+          '/messages/unread-count',
+          token: token,
+        ).catchError((_) => {'count': 0}),
+        ApiService.get(
+          '/timeline/unread-count',
+          token: token,
+        ).catchError((_) => {'count': 0}),
       ]);
       if (mounted) {
         setState(() {
@@ -59,6 +71,21 @@ class _MainShellState extends State<MainShell> {
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _clearTimelineUnreadCount() async {
+    final token = context.read<AuthService>().token;
+    if (token == null) return;
+    try {
+      await ApiService.post(
+        '/timeline/mark-all-as-read',
+        token: token,
+        body: {},
+      );
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _unreadTimelinePosts = 0);
+    }
   }
 
   @override
@@ -73,7 +100,14 @@ class _MainShellState extends State<MainShell> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
+          onTap: (i) {
+            setState(() => _currentIndex = i);
+            // Refresh timeline data and clear unread count when timeline tab is tapped
+            if (i == 2) {
+              (_timelineKey.currentState as dynamic)?.refreshData();
+              _clearTimelineUnreadCount();
+            }
+          },
           items: [
             const BottomNavigationBarItem(
               icon: Icon(Icons.dashboard_rounded),
@@ -84,7 +118,10 @@ class _MainShellState extends State<MainShell> {
               label: 'Messages',
             ),
             BottomNavigationBarItem(
-              icon: _badgeIcon(Icons.auto_awesome_rounded, _unreadTimelinePosts),
+              icon: _badgeIcon(
+                Icons.auto_awesome_rounded,
+                _unreadTimelinePosts,
+              ),
               label: 'Timeline',
             ),
             const BottomNavigationBarItem(

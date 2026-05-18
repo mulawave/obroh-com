@@ -20,9 +20,9 @@ class AuthService extends ChangeNotifier {
     if (_token != null) {
       try {
         await refreshUser();
-        // Register FCM token for existing session
-        await FcmService.handleCurrentToken();
-        await FcmService.setupTokenRefreshCallback();
+        if (_user != null) {
+          await FcmService.I.initAndRegister(_user!.id, _token!);
+        }
       } catch (_) {
         await logout();
       }
@@ -32,16 +32,14 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> login(String email, String password) async {
-    final res = await ApiService.post('/auth/login', body: {
-      'email': email,
-      'password': password,
-    });
+    final res = await ApiService.post(
+      '/auth/login',
+      body: {'email': email, 'password': password},
+    );
     _token = res['token'] as String;
     _user = User.fromJson(res['user'] as Map<String, dynamic>);
     await _storage.write(key: 'auth_token', value: _token);
-    // Register FCM token
-    await FcmService.handleCurrentToken();
-    await FcmService.setupTokenRefreshCallback();
+    await FcmService.I.initAndRegister(_user!.id, _token!);
     notifyListeners();
   }
 
@@ -52,15 +50,26 @@ class AuthService extends ChangeNotifier {
     required String password,
     String? phone,
     String? location,
+    String? branch,
+    String? relationship,
+    String? additionalInfo,
   }) async {
-    final res = await ApiService.post('/auth/register', body: {
-      'firstName': firstName,
-      'lastName': lastName,
-      'email': email,
-      'password': password,
-      if (phone != null && phone.isNotEmpty) 'phone': phone,
-      if (location != null && location.isNotEmpty) 'location': location,
-    });
+    final res = await ApiService.post(
+      '/auth/register',
+      body: {
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'password': password,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (branch != null && branch.isNotEmpty) 'branch': branch,
+        if (relationship != null && relationship.isNotEmpty)
+          'relationship': relationship,
+        if (additionalInfo != null && additionalInfo.isNotEmpty)
+          'additionalInfo': additionalInfo,
+      },
+    );
     return res['message'] as String? ?? 'Registration successful';
   }
 
@@ -71,10 +80,8 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    // Unregister FCM token
-    final token = await FcmService.getCurrentToken();
-    if (token != null) {
-      await FcmService.unregisterToken(token);
+    if (_token != null) {
+      await FcmService.I.unregisterCurrentToken(authToken: _token!);
     }
     _token = null;
     _user = null;

@@ -73,6 +73,12 @@ try {
     if ($Validate) {
         return @{ Success = $true }
     }
+
+    $deployEnvFile = Join-Path $backendDir 'deploy-env.yaml'
+    if (-not (Test-Path $deployEnvFile)) {
+        Write-LogError "Deployment env file not found: $deployEnvFile"
+        return @{ Success = $false }
+    }
     
     # ============================================================================
     # BUILD (Cloud Build)
@@ -83,15 +89,16 @@ try {
     try {
         $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $imageTag = "$($config.RegistryUrl)/$($svcConfig.ImageName):$timestamp"
-        $cloudBuildConfig = Join-Path $backendDir 'cloudbuild.yaml'
+        $cloudBuildConfig = 'cloudbuild.yaml'
         
         Write-LogInfo "Building: $imageTag"
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        $buildOutput = gcloud builds submit $backendDir `
+        $buildOutput = gcloud builds submit . `
             --config $cloudBuildConfig `
             --project $config.Project `
             --region $config.Region `
+            --quiet `
             --substitutions "_IMAGE=$imageTag" 2>&1
         $buildExitCode = $LASTEXITCODE
         $ErrorActionPreference = $previousErrorActionPreference
@@ -110,19 +117,20 @@ try {
         # DEPLOY
         # ========================================================================
         Write-LogInfo "Deploying to Cloud Run..."
-        $envVars = "NODE_ENV=production,WEBSITE_URL=https://obroh.com,ADMIN_URL=https://admin.obroh.com"
         
         $ErrorActionPreference = 'Continue'
         $deployOutput = gcloud run deploy $svcConfig.ServiceName `
             --image $imageTag `
             --region $config.Region `
             --project $config.Project `
+            --quiet `
             --memory $svcConfig.Memory `
             --cpu $svcConfig.Cpu `
             --timeout $svcConfig.Timeout `
             --max-instances $svcConfig.MaxInstances `
             --min-instances $svcConfig.MinInstances `
-            --set-env-vars "$envVars" `
+            --env-vars-file $deployEnvFile `
+            --set-secrets DATABASE_URL=obroh-database-url:latest `
             --allow-unauthenticated `
             --platform managed 2>&1
         $deployExitCode = $LASTEXITCODE

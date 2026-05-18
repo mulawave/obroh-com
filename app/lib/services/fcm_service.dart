@@ -1,12 +1,28 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'api_service.dart';
 
-class FcmService {
-  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  static bool _initialized = false;
+class FcmTapEvent {
+  final Map<String, dynamic> data;
 
-  static Future<void> init() async {
+  const FcmTapEvent({required this.data});
+}
+
+class FcmService {
+  FcmService._();
+
+  static final FcmService I = FcmService._();
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  final StreamController<FcmTapEvent> _tapController =
+      StreamController<FcmTapEvent>.broadcast();
+
+  bool _initialized = false;
+
+  Stream<FcmTapEvent> get taps => _tapController.stream;
+
+  Future<void> init() async {
     if (_initialized) return;
 
     // Request notification permission (Android auto-grants, iOS requires request)
@@ -39,12 +55,13 @@ class FcmService {
     _initialized = true;
   }
 
-  static Future<void> registerToken(String token) async {
+  Future<void> registerToken(String token, {String? authToken}) async {
     try {
-      await ApiService.post('/fcm/register', body: {
-        'token': token,
-        'platform': 'android',
-      });
+      await ApiService.post(
+        '/fcm/register',
+        body: {'token': token, 'platform': 'android'},
+        token: authToken,
+      );
       if (kDebugMode) {
         print('FCM token registered');
       }
@@ -55,9 +72,13 @@ class FcmService {
     }
   }
 
-  static Future<void> unregisterToken(String token) async {
+  Future<void> unregisterToken(String token, {String? authToken}) async {
     try {
-      await ApiService.post('/fcm/unregister', body: {'token': token});
+      await ApiService.post(
+        '/fcm/unregister',
+        body: {'token': token},
+        token: authToken,
+      );
       if (kDebugMode) {
         print('FCM token unregistered');
       }
@@ -68,34 +89,53 @@ class FcmService {
     }
   }
 
-  static Future<void> setupTokenRefreshCallback() async {
+  Future<void> setupTokenRefreshCallback({String? authToken}) async {
     _messaging.onTokenRefresh.listen((newToken) async {
-      await registerToken(newToken);
+      await registerToken(newToken, authToken: authToken);
     });
   }
 
-  static Future<void> handleCurrentToken() async {
+  Future<void> handleCurrentToken({String? authToken}) async {
     final token = await _messaging.getToken();
     if (token != null) {
-      await registerToken(token);
+      await registerToken(token, authToken: authToken);
     }
   }
 
-  static Future<String?> getCurrentToken() async {
+  Future<String?> getCurrentToken() async {
     return await _messaging.getToken();
   }
 
-  static void _handleForegroundMessage(RemoteMessage message) {
+  Future<void> initAndRegister(String userId, String authToken) async {
+    await init();
+    await handleCurrentToken(authToken: authToken);
+    await setupTokenRefreshCallback(authToken: authToken);
+    if (kDebugMode) {
+      print('FCM initialized and registered for user $userId');
+    }
+  }
+
+  Future<void> unregisterCurrentToken({required String authToken}) async {
+    final token = await getCurrentToken();
+    if (token == null) return;
+    await unregisterToken(token, authToken: authToken);
+  }
+
+  void _handleForegroundMessage(RemoteMessage message) {
     if (kDebugMode) {
       print('Foreground message: ${message.notification?.title}');
     }
     // Local notifications can be added later with proper flutter_local_notifications setup
   }
 
-  static void _handleMessageTap(RemoteMessage message) {
+  void _handleMessageTap(RemoteMessage message) {
     if (kDebugMode) {
       print('Message tapped: ${message.data}');
     }
+    _tapController.add(
+      FcmTapEvent(data: Map<String, dynamic>.from(message.data)),
+    );
+
     // Navigate based on link if provided
     final link = message.data['link'];
     if (link != null) {

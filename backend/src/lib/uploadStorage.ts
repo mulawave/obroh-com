@@ -6,6 +6,7 @@ import path from "path";
 
 const uploadsRoot = path.join(process.cwd(), "uploads");
 const bucketName = process.env.GCS_BUCKET;
+const isProduction = process.env.NODE_ENV === "production";
 const storage = bucketName ? new Storage() : null;
 const bucket = bucketName ? storage!.bucket(bucketName) : null;
 
@@ -47,6 +48,15 @@ function normalizeUploadPath(uploadPath: string) {
   return uploadPath.replace(/^\/+/, "").replace(/^uploads\//, "");
 }
 
+function assertPersistentUploadStorage(operation: string) {
+  if (isProduction && !bucket) {
+    throw new Error(
+      `GCS_BUCKET must be configured in production before ${operation}. ` +
+      "Local filesystem uploads are ephemeral on Cloud Run."
+    );
+  }
+}
+
 export function createMemoryUpload(options: UploadOptions) {
   return multer({
     storage: multer.memoryStorage(),
@@ -83,6 +93,8 @@ export function buildUploadUrl(objectPath: string) {
 export async function saveUploadedFile(file: Express.Multer.File, objectPath: string) {
   const normalized = normalizeUploadPath(objectPath);
 
+  assertPersistentUploadStorage("saving uploaded files");
+
   if (bucket) {
     const target = bucket.file(normalized);
     await target.save(file.buffer, {
@@ -105,6 +117,13 @@ export async function streamUploadedFile(req: Request, res: Response, next: Next
   const normalized = normalizeUploadPath(req.path);
 
   if (!bucket) {
+    if (isProduction) {
+      res.status(500).json({
+        error: "Persistent upload storage is not configured",
+      });
+      return;
+    }
+
     next();
     return;
   }

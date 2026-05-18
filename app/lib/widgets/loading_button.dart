@@ -80,12 +80,16 @@ class LoadingButton extends StatelessWidget {
                       Icon(icon, size: 18),
                       const SizedBox(width: 8),
                     ],
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
+                    Expanded(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                     ),
                   ],

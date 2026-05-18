@@ -30,9 +30,37 @@ router.post("/register", async (req, res) => {
       return;
     }
 
+    let branchId: string | undefined;
+    if (typeof branch === "string" && branch.trim().length > 0 && branch.trim() !== "__unknown__") {
+      const branchInput = branch.trim();
+      const matchedBranch = await prisma.familyBranch.findFirst({
+        where: {
+          OR: [
+            { id: branchInput },
+            { name: { equals: branchInput, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!matchedBranch) {
+        res.status(400).json({ error: "Selected lineage branch is invalid. Please choose a valid branch." });
+        return;
+      }
+      branchId = matchedBranch?.id;
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { firstName, lastName, email: email.toLowerCase(), phone, location, password: hashedPassword, branch, relationship },
+      data: {
+        firstName,
+        lastName,
+        email: email.toLowerCase(),
+        phone,
+        location,
+        password: hashedPassword,
+        branchId,
+        relationship,
+      },
     });
 
     res.status(201).json({

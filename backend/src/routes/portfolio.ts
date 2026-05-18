@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma";
 import { authenticate, requireApproved, AuthRequest } from "../middleware/auth";
-import { sendPushNotification } from "../lib/fcm";
+import { sendPushNotification, FCM_CHANNELS } from "../lib/fcm";
 import { createMemoryUpload, createObjectName, saveUploadedFile } from "../lib/uploadStorage";
 
 const router = Router();
@@ -9,7 +9,12 @@ const auth: any[] = [authenticate as any, requireApproved as any];
 const upload = createMemoryUpload({
   errorMessage: "Only image uploads are allowed",
   fileSize: 5 * 1024 * 1024,
-  accept: (mimetype) => mimetype.startsWith("image/"),
+  accept: (mimetype, originalName) => {
+    if (mimetype.startsWith("image/")) return true;
+    return /\.(png|jpe?g|webp|gif|heic|heif|bmp|tiff?|avif)$/i.test(
+      originalName,
+    );
+  },
 });
 
 function sanitizeAssetUrl(value: string | null | undefined): string | null {
@@ -116,35 +121,34 @@ router.get("/", ...auth, async (req: AuthRequest, res) => {
   }
 });
 
+// GET /portfolio/members/:userId — view another member's portfolio (members-only)
+router.get("/members/:userId", ...auth, async (req: AuthRequest, res) => {
+  try {
+    const userId = String(req.params.userId);
+    const portfolio = await prisma.portfolio.findUnique({
+      where: { userId },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, profileImage: true, bio: true } },
+        galleryImages: { orderBy: { sortOrder: "asc" } },
+        projects: { include: { images: true }, orderBy: { sortOrder: "asc" } },
+        skills: { orderBy: { sortOrder: "asc" } },
+        experiences: { include: { images: { orderBy: { sortOrder: "asc" } } }, orderBy: { sortOrder: "asc" } },
+        education: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+    if (!portfolio) {
+      res.status(404).json({ error: "Portfolio not found" });
+      return;
+    }
+    res.json(normalizePortfolioForResponse(portfolio));
+  } catch (err) {
+    console.error("Get member portfolio error:", err);
+    res.status(500).json({ error: "Failed to load portfolio" });
+  }
+});
+
 // PUT /portfolio — update portfolio settings
 router.put("/", ...auth, async (req: AuthRequest, res) => {
-
-  // GET /portfolio/members/:userId — view another member's portfolio (members-only)
-  router.get("/members/:userId", ...auth, async (req: AuthRequest, res) => {
-    try {
-      const portfolio = await prisma.portfolio.findUnique({
-        where: { userId: req.params.userId },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, profileImage: true, bio: true } },
-          galleryImages: { orderBy: { sortOrder: "asc" } },
-          projects: { include: { images: true }, orderBy: { sortOrder: "asc" } },
-          skills: { orderBy: { sortOrder: "asc" } },
-          experiences: { include: { images: { orderBy: { sortOrder: "asc" } } }, orderBy: { sortOrder: "asc" } },
-          education: { orderBy: { sortOrder: "asc" } },
-        },
-      });
-      if (!portfolio) {
-        res.status(404).json({ error: "Portfolio not found" });
-        return;
-      }
-      res.json(normalizePortfolioForResponse(portfolio));
-    } catch (err) {
-      console.error("Get member portfolio error:", err);
-      res.status(500).json({ error: "Failed to load portfolio" });
-    }
-  });
-
-  // PUT /portfolio — update portfolio settings
   try {
     const { headline, summary, isPublic, slug } = req.body;
     const portfolio = await prisma.portfolio.upsert({
@@ -589,12 +593,34 @@ router.post("/public/:slug/contact", async (req, res) => {
       },
     });
     // Send push notification
-    sendPushNotification(portfolio.userId, "New Portfolio Message", `${name.trim()} sent you a message via your portfolio`, "/dashboard/messages");
+    sendPushNotification(portfolio.userId, "New Portfolio Message", `${name.trim()} sent you a message via your portfolio`, {
+      type: "new_message",
+      deepLink: "/dashboard/messages",
+      channelId: FCM_CHANNELS.message,
+    });
     res.status(201).json({ message: "Message sent successfully" });
   } catch (err) {
     console.error("Public contact error:", err);
     res.status(500).json({ error: "Failed to send message" });
   }
+});
+
+// Normalize multer/upload errors into client-safe responses for mobile flows.
+router.use((err: any, _req: any, res: any, next: any) => {
+  if (!err) {
+    next();
+    return;
+  }
+
+  if (typeof err.message === "string" && err.message.length > 0) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes("only image uploads") || msg.includes("file too large")) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+  }
+
+  next(err);
 });
 
 export default router;

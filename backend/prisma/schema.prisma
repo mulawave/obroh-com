@@ -33,6 +33,8 @@ model User {
   timelinePosts      TimelinePost[]
   timelineLikes      TimelinePostLike[]
   timelineComments   TimelinePostComment[]
+    commentReplies     TimelineCommentReply[]
+    commentReactions   TimelineCommentReaction[]
   portfolio          Portfolio?
   biography          Biography?
   legalDeclarations  LegalDeclaration[]
@@ -202,8 +204,36 @@ model TimelinePostComment {
   content   String
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  replies   TimelineCommentReply[]
+  reactions TimelineCommentReaction[]
 
   @@map("timeline_post_comments")
+}
+
+model TimelineCommentReply {
+  id        String              @id @default(cuid())
+  commentId String
+  comment   TimelinePostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User                @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@map("timeline_comment_replies")
+}
+
+model TimelineCommentReaction {
+  id        String              @id @default(cuid())
+  commentId String
+  comment   TimelinePostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String              @default("👍")
+  createdAt DateTime            @default(now())
+
+  @@unique([commentId, userId])
+  @@map("timeline_comment_reactions")
 }
 
 // ─── Internal Messaging ──────────────────────────────────────────────────────

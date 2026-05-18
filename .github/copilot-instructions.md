@@ -1,5 +1,12 @@
 # AfroVision — GitHub Copilot Instructions
 
+## Absolute Deployment Boundary Law (MANDATORY)
+
+1. **Obroh Scope Only**: This repository is strictly for Obroh operations. All actions must remain within Obroh services, configs, domains, and deployment paths.
+2. **Afrovision Is Forbidden**: Do not read, modify, deploy, rollback, validate, disable, or otherwise interact with any Afrovision service, domain, hosting target, or process from this repo.
+3. **No Cross-Project Interference**: Any command or change that touches Afrovision infrastructure is a critical violation and must be treated as prohibited.
+4. **Safety Default**: If an action may affect Afrovision, do not execute it. Restrict operations to Obroh-only targets.
+
 ## Design Rules (MANDATORY — apply to ALL screens and components)
 
 1. **Background Gradient**: Every screen MUST use `AppColors.primaryGradient` (lightBlue → darkBlue, top → bottom) as its background. No exceptions.

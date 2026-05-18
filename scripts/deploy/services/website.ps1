@@ -102,6 +102,7 @@ try {
             --config cloudbuild.yaml `
             --project $config.Project `
             --region $config.Region `
+            --quiet `
             --substitutions "_IMAGE=$imageTag,_NEXT_PUBLIC_API_URL=$backendApiUrl,_NEXT_PUBLIC_FIREBASE_ANALYTICS_ENABLED=true" 2>&1
         $buildExitCode = $LASTEXITCODE
         $ErrorActionPreference = $previousErrorActionPreference
@@ -127,6 +128,7 @@ try {
             --image $imageTag `
             --region $config.Region `
             --project $config.Project `
+            --quiet `
             --memory $svcConfig.Memory `
             --cpu $svcConfig.Cpu `
             --timeout $svcConfig.Timeout `

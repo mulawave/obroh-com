@@ -18,7 +18,7 @@ function Get-DeploymentConfig {
         # URLs
         BackendUrl             = 'https://obroh-backend-zoeqld5lsa-uc.a.run.app'
         AdminUrl               = 'https://obroh-admin-zoeqld5lsa-uc.a.run.app'
-        WebsiteUrl             = 'https://obroh-website-zoeqld5lsa-uc.a.run.app'
+        WebsiteUrl             = 'https://obroh.com'
         
         # Build configs
         Backend = @{
@@ -40,7 +40,7 @@ function Get-DeploymentConfig {
             Memory             = '1Gi'
             Cpu                = '1'
             Timeout            = '300'
-            MaxInstances       = '50'
+            MaxInstances       = '20'
             MinInstances       = '0'
             AllowUnauthenticated = $true
         }

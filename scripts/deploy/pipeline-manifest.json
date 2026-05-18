@@ -8,7 +8,7 @@
     },
     {
       "path": "scripts/deploy/services/backend.ps1",
-      "sha256": "21c4b352031558ce0c71e6755855155b5b851cd756d9c16dd232dbdb8b21acf1"
+      "sha256": "ac0c43f2dfc8c739a8889843dc0643b928e7e2e4a8e72381f21e8bcb4f2ed10b"
     },
     {
       "path": "scripts/deploy/services/website.ps1",
@@ -20,7 +20,7 @@
     },
     {
       "path": "scripts/deploy/utils/config.ps1",
-      "sha256": "2bee0af3cb23fd2118f205dab6c9a1bfa1393441da174261b57330fbc43213d9"
+      "sha256": "5e5f4a84d8d72f78354d4379c8721f48baea682e612717b006e61a0b35eac8aa"
     },
     {
       "path": "scripts/deploy/utils/validation.ps1",

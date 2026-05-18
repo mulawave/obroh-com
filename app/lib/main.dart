@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
 import 'services/fcm_service.dart';
+import 'services/notification_router.dart';
 import 'theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
 
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  await FcmService.init();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await FcmService.I.init();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -27,8 +37,19 @@ void main() async {
   runApp(const ObrohApp());
 }
 
-class ObrohApp extends StatelessWidget {
+class ObrohApp extends StatefulWidget {
   const ObrohApp({super.key});
+
+  @override
+  State<ObrohApp> createState() => _ObrohAppState();
+}
+
+class _ObrohAppState extends State<ObrohApp> {
+  @override
+  void initState() {
+    super.initState();
+    NotificationRouter.I.bind(appNavigatorKey);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +61,7 @@ class ObrohApp extends StatelessWidget {
             title: 'Obroh Chronicles',
             debugShowCheckedModeBanner: false,
             theme: ObrohTheme.darkTheme,
+            navigatorKey: appNavigatorKey,
             home: auth.loading
                 ? const _SplashScreen()
                 : auth.isAuthenticated

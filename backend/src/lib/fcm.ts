@@ -33,6 +33,23 @@ const fcmRateLimit = 10; // max 10 notifications per user per hour
 const fcmRateWindow = 60 * 60 * 1000; // 1 hour in ms
 const fcmSendLog = new Map<string, { count: number; resetTime: number }>();
 
+export const FCM_CHANNELS = {
+  default: "com_obroh_chronicles_default_channel",
+  social: "com_obroh_chronicles_social_channel",
+  message: "com_obroh_chronicles_message_channel",
+  alert: "com_obroh_chronicles_alert_channel",
+  post: "com_obroh_chronicles_post_channel",
+} as const;
+
+type PushType = "post_activity" | "new_alert" | "new_message" | "new_post" | "default";
+
+type PushOptions = {
+  deepLink?: string;
+  type?: PushType;
+  channelId?: string;
+  data?: Record<string, string | number | boolean | null | undefined>;
+};
+
 /**
  * Check if user is rate limited for FCM
  */
@@ -58,7 +75,12 @@ function isRateLimited(userId: string): boolean {
 /**
  * Send a push notification to a user's registered FCM devices
  */
-export async function sendPushNotification(userId: string, title: string, body: string, link?: string) {
+export async function sendPushNotification(
+  userId: string,
+  title: string,
+  body: string,
+  options: PushOptions = {},
+) {
   if (!fcmInitialized) {
     console.log(`[FCM Mock] Would send to user ${userId}: ${title} - ${body}`);
     return;
@@ -85,13 +107,36 @@ export async function sendPushNotification(userId: string, title: string, body: 
 
     const tokens = deviceTokens.map((t: { token: string }) => t.token);
 
+    const payloadData: Record<string, string> = {
+      type: options.type ?? "default",
+      channelId: options.channelId ?? FCM_CHANNELS.default,
+    };
+
+    if (options.deepLink) {
+      payloadData.deepLink = options.deepLink;
+      payloadData.link = options.deepLink;
+    }
+
+    for (const [key, value] of Object.entries(options.data ?? {})) {
+      if (value == null) continue;
+      payloadData[key] = String(value);
+    }
+
     // Send notification to all devices using sendEachForMulticast
     const message: admin.messaging.MulticastMessage = {
       notification: {
         title,
         body,
       },
-      data: link ? { link } : undefined,
+      android: {
+        priority: "high",
+        notification: {
+          channelId: payloadData.channelId,
+          priority: "high",
+          defaultSound: true,
+        },
+      },
+      data: payloadData,
       tokens,
     };
 

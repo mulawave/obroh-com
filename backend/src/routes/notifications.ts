@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma";
 import { authenticate, requireApproved, requireAdmin, AuthRequest } from "../middleware/auth";
 import nodemailer from "nodemailer";
+import { sendPushNotification, FCM_CHANNELS } from "../lib/fcm";
 
 const router = Router();
 const auth: any[] = [authenticate as any, requireApproved as any];
@@ -73,6 +74,17 @@ router.post("/admin", ...adminAuth, async (req: AuthRequest, res) => {
           link,
         })),
       });
+
+      await Promise.all(
+        recipientIds.map((userId: string) =>
+          sendPushNotification(userId, title, body ?? "", {
+            type: "new_alert",
+            deepLink: link || "/dashboard/notifications",
+            channelId: FCM_CHANNELS.alert,
+          })
+        )
+      );
+
       res.status(201).json({ message: `Sent ${notifications.count} notifications` });
     } else {
       // Send to all users
@@ -86,6 +98,17 @@ router.post("/admin", ...adminAuth, async (req: AuthRequest, res) => {
           link,
         })),
       });
+
+      await Promise.all(
+        users.map((user) =>
+          sendPushNotification(user.id, title, body ?? "", {
+            type: "new_alert",
+            deepLink: link || "/dashboard/notifications",
+            channelId: FCM_CHANNELS.alert,
+          })
+        )
+      );
+
       res.status(201).json({ message: `Sent ${notifications.count} notifications` });
     }
   } catch (err) {

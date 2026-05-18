@@ -3,7 +3,7 @@ import multer from "multer";
 import prisma from "../lib/prisma";
 import { createMemoryUpload, createObjectName, saveUploadedFile } from "../lib/uploadStorage";
 import { generateAndSaveThumbnail } from "../lib/thumbnailGenerator";
-import { sendPushNotification } from "../lib/fcm";
+import { sendPushNotification, FCM_CHANNELS } from "../lib/fcm";
 import { authenticate, requireApproved, AuthRequest } from "../middleware/auth";
 
 const router = Router();
@@ -34,6 +34,108 @@ const TIMELINE_AUTHOR_SELECT = {
   profileImage: true,
 } as const;
 
+const TIMELINE_COMMENT_INCLUDE = {
+  author: { select: TIMELINE_AUTHOR_SELECT },
+  replies: {
+    include: { author: { select: TIMELINE_AUTHOR_SELECT } },
+    orderBy: { createdAt: "asc" },
+  },
+  reactions: {
+    select: { id: true, userId: true, emoji: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  },
+} as const;
+
+const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
+const VIDEO_THUMBNAIL_MAX_BYTES = 25 * 1024 * 1024;
+
+async function buildVideoThumbnail(file: Express.Multer.File) {
+  // For larger videos, skip expensive thumbnail extraction to keep post creation reliable.
+  if (file.size > VIDEO_THUMBNAIL_MAX_BYTES) {
+    return null;
+  }
+
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), VIDEO_THUMBNAIL_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race<string | null>([
+      generateAndSaveThumbnail(file.buffer, file.originalname, "timeline/thumbnails"),
+      timeout,
+    ]);
+  } catch (err) {
+    console.warn("Video thumbnail generation failed; continuing without thumbnail", {
+      originalName: file.originalname,
+      size: file.size,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+async function notifyPostAuthorAboutComment(postId: string, commenterId: string) {
+  const post = await prisma.timelinePost.findUnique({
+    where: { id: postId },
+    select: { authorId: true },
+  });
+
+  if (!post || post.authorId === commenterId) return;
+
+  const commenter = await prisma.user.findUnique({
+    where: { id: commenterId },
+    select: { firstName: true, lastName: true },
+  });
+
+  if (!commenter) return;
+
+  await sendPushNotification(
+    post.authorId,
+    "New Comment on Your Post",
+    `${commenter.firstName} ${commenter.lastName} commented on your post`,
+    {
+      type: "post_activity",
+      deepLink: `/timeline`,
+      channelId: FCM_CHANNELS.social,
+      data: { postId },
+    }
+  );
+}
+
+async function notifyMembersAboutNewPost(
+  postId: string,
+  authorId: string,
+  authorName: string,
+) {
+  const recipients = await prisma.user.findMany({
+    where: { status: "approved", id: { not: authorId } },
+    select: { id: true },
+    take: 500,
+  });
+  if (recipients.length === 0) return;
+
+  await prisma.notification.createMany({
+    data: recipients.map((u) => ({
+      userId: u.id,
+      title: "New Post",
+      body: `${authorName} shared a new timeline post`,
+      type: "post",
+      link: `/timeline`,
+    })),
+  });
+
+  await Promise.all(
+    recipients.map((u) =>
+      sendPushNotification(u.id, "New Post", `${authorName} shared a new timeline post`, {
+        type: "new_post",
+        deepLink: "/timeline",
+        channelId: FCM_CHANNELS.post,
+        data: { postId },
+      })
+    )
+  );
+}
+
 // GET /timeline — paginated feed
 router.get("/", ...auth, async (req: AuthRequest, res) => {
   try {
@@ -53,7 +155,7 @@ router.get("/", ...auth, async (req: AuthRequest, res) => {
           media: true,
           likes: { select: { userId: true } },
           comments: {
-            include: { author: { select: TIMELINE_AUTHOR_SELECT } },
+            include: TIMELINE_COMMENT_INCLUDE,
             orderBy: { createdAt: "asc" },
           },
           _count: { select: { likes: true, comments: true } },
@@ -118,12 +220,7 @@ router.post("/", ...auth, (req: AuthRequest, res) => {
         
         let thumbnailUrl: string | null = null;
         if (isVideo) {
-          // Generate thumbnail for video
-          thumbnailUrl = await generateAndSaveThumbnail(
-            file.buffer,
-            file.originalname,
-            `timeline/thumbnails`
-          );
+          thumbnailUrl = await buildVideoThumbnail(file);
         }
 
         return {
@@ -150,10 +247,17 @@ router.post("/", ...auth, (req: AuthRequest, res) => {
           author: { select: TIMELINE_AUTHOR_SELECT },
           media: { orderBy: { sortOrder: "asc" } },
           likes: { select: { userId: true } },
-          comments: true,
+          comments: {
+            include: TIMELINE_COMMENT_INCLUDE,
+            orderBy: { createdAt: "asc" },
+          },
           _count: { select: { likes: true, comments: true } },
         },
       });
+
+      const authorName = `${req.user!.firstName} ${req.user!.lastName}`;
+      await notifyMembersAboutNewPost(post.id, req.user!.id, authorName.trim());
+
       res.status(201).json(post);
     } catch (err) {
       console.error("Create post error:", err);
@@ -186,35 +290,39 @@ router.post("/:id/like", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const userId = req.user!.id;
     const existing = await prisma.timelinePostLike.findUnique({ where: { postId_userId: { postId, userId } } });
-    
+
     if (existing) {
       await prisma.timelinePostLike.delete({ where: { id: existing.id } });
       res.json({ liked: false });
     } else {
       await prisma.timelinePostLike.create({ data: { postId, userId } });
-      
-      // Send notification to post author if they didn't like their own post
+
       const post = await prisma.timelinePost.findUnique({
         where: { id: postId },
         select: { authorId: true },
       });
-      
+
       if (post && post.authorId !== userId) {
         const liker = await prisma.user.findUnique({
           where: { id: userId },
           select: { firstName: true, lastName: true },
         });
-        
+
         if (liker) {
           await sendPushNotification(
             post.authorId,
             "Timeline Post Liked",
             `${liker.firstName} ${liker.lastName} liked your post`,
-            `/timeline`
+            {
+              type: "post_activity",
+              deepLink: "/timeline",
+              channelId: FCM_CHANNELS.social,
+              data: { postId },
+            }
           );
         }
       }
-      
+
       res.json({ liked: true });
     }
   } catch (err) {
@@ -229,34 +337,14 @@ router.post("/:id/comments", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ error: "Comment content is required" }); return; }
-    
+
     const comment = await prisma.timelinePostComment.create({
       data: { postId, authorId: req.user!.id, content: content.trim() },
-      include: { author: { select: TIMELINE_AUTHOR_SELECT } },
+      include: TIMELINE_COMMENT_INCLUDE,
     });
-    
-    // Send notification to post author
-    const post = await prisma.timelinePost.findUnique({
-      where: { id: postId },
-      select: { authorId: true },
-    });
-    
-    if (post && post.authorId !== req.user!.id) {
-      const commenter = await prisma.user.findUnique({
-        where: { id: req.user!.id },
-        select: { firstName: true, lastName: true },
-      });
-      
-      if (commenter) {
-        await sendPushNotification(
-          post.authorId,
-          "New Comment on Your Post",
-          `${commenter.firstName} ${commenter.lastName} commented on your post`,
-          `/timeline`
-        );
-      }
-    }
-    
+
+    await notifyPostAuthorAboutComment(postId, req.user!.id);
+
     res.status(201).json(comment);
   } catch (err) {
     console.error("Comment error:", err);
@@ -269,38 +357,88 @@ router.post("/:id/comment", ...auth, async (req: AuthRequest, res) => {
     const postId = String(req.params.id);
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ error: "Comment content is required" }); return; }
-    
+
     const comment = await prisma.timelinePostComment.create({
       data: { postId, authorId: req.user!.id, content: content.trim() },
-      include: { author: { select: TIMELINE_AUTHOR_SELECT } },
+      include: TIMELINE_COMMENT_INCLUDE,
     });
-    
-    // Send notification to post author
-    const post = await prisma.timelinePost.findUnique({
-      where: { id: postId },
-      select: { authorId: true },
-    });
-    
-    if (post && post.authorId !== req.user!.id) {
-      const commenter = await prisma.user.findUnique({
-        where: { id: req.user!.id },
-        select: { firstName: true, lastName: true },
-      });
-      
-      if (commenter) {
-        await sendPushNotification(
-          post.authorId,
-          "New Comment on Your Post",
-          `${commenter.firstName} ${commenter.lastName} commented on your post`,
-          `/timeline`
-        );
-      }
-    }
-    
+
+    await notifyPostAuthorAboutComment(postId, req.user!.id);
+
     res.status(201).json(comment);
   } catch (err) {
     console.error("Comment error:", err);
     res.status(500).json({ error: "Failed to add comment" });
+  }
+});
+
+// POST /timeline/comments/:commentId/replies — add reply to comment
+router.post("/comments/:commentId/replies", ...auth, async (req: AuthRequest, res) => {
+  try {
+    const prismaWithCommentModels = prisma as any;
+    const commentId = String(req.params.commentId);
+    const { content } = req.body;
+    if (!content?.trim()) { res.status(400).json({ error: "Reply content is required" }); return; }
+
+    const comment = await prisma.timelinePostComment.findUnique({
+      where: { id: commentId },
+      select: { id: true },
+    });
+    if (!comment) { res.status(404).json({ error: "Comment not found" }); return; }
+
+    const reply = await prismaWithCommentModels.timelineCommentReply.create({
+      data: { commentId, authorId: req.user!.id, content: content.trim() },
+      include: { author: { select: TIMELINE_AUTHOR_SELECT } },
+    });
+
+    res.status(201).json(reply);
+  } catch (err) {
+    console.error("Reply error:", err);
+    res.status(500).json({ error: "Failed to add reply" });
+  }
+});
+
+// POST /timeline/comments/:commentId/reactions — toggle comment reaction
+router.post("/comments/:commentId/reactions", ...auth, async (req: AuthRequest, res) => {
+  try {
+    const prismaWithCommentModels = prisma as any;
+    const commentId = String(req.params.commentId);
+    const userId = req.user!.id;
+    const emoji = typeof req.body?.emoji === "string" && req.body.emoji.trim()
+      ? req.body.emoji.trim().slice(0, 8)
+      : "👍";
+
+    const comment = await prisma.timelinePostComment.findUnique({
+      where: { id: commentId },
+      select: { id: true },
+    });
+    if (!comment) { res.status(404).json({ error: "Comment not found" }); return; }
+
+    const existing = await prismaWithCommentModels.timelineCommentReaction.findUnique({
+      where: { commentId_userId: { commentId, userId } },
+    });
+
+    if (existing && existing.emoji === emoji) {
+      await prismaWithCommentModels.timelineCommentReaction.delete({ where: { id: existing.id } });
+      res.json({ reacted: false, removed: true });
+      return;
+    }
+
+    const reaction = existing
+      ? await prismaWithCommentModels.timelineCommentReaction.update({
+          where: { id: existing.id },
+          data: { emoji },
+          select: { id: true, userId: true, emoji: true, createdAt: true },
+        })
+      : await prismaWithCommentModels.timelineCommentReaction.create({
+          data: { commentId, userId, emoji },
+          select: { id: true, userId: true, emoji: true, createdAt: true },
+        });
+
+    res.json({ reacted: true, removed: false, reaction });
+  } catch (err) {
+    console.error("Comment reaction error:", err);
+    res.status(500).json({ error: "Failed to toggle reaction" });
   }
 });
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma";
 import { authenticate, requireApproved, AuthRequest } from "../middleware/auth";
-import { sendPushNotification } from "../lib/fcm";
+import { sendPushNotification, FCM_CHANNELS } from "../lib/fcm";
 
 const router = Router();
 const auth: any[] = [authenticate as any, requireApproved as any];
@@ -138,7 +138,11 @@ router.post("/", ...auth, async (req: AuthRequest, res) => {
 
     // Send push notifications
     for (const userId of recipientIds as string[]) {
-      sendPushNotification(userId, "New Message", `${senderName} sent you a message: "${subject.trim()}"`, "/dashboard/messages");
+      sendPushNotification(userId, "New Message", `${senderName} sent you a message: "${subject.trim()}"`, {
+        type: "new_message",
+        deepLink: "/dashboard/messages",
+        channelId: FCM_CHANNELS.message,
+      });
     }
 
     res.status(201).json(message);

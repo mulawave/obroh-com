@@ -52,6 +52,17 @@ try {
     $config = Get-DeploymentConfig
     $svcConfig = Get-ServiceConfig -Service 'admin'
     $adminDir = Join-Path $repoRoot 'admin'
+    $backendUrl = gcloud run services describe $config.BackendService `
+        --region $config.Region `
+        --project $config.Project `
+        --format='value(status.url)' 2>$null
+
+    if (-not $backendUrl) {
+        Write-LogError "Unable to resolve backend service URL for NEXT_PUBLIC_API_URL"
+        return @{ Success = $false }
+    }
+
+    $backendApiUrl = "$($backendUrl.TrimEnd('/'))/api"
     
     Write-LogInfo "Service: $($svcConfig.ServiceName)"
     Write-LogInfo "Region: $($config.Region)"
@@ -91,7 +102,8 @@ try {
             --config cloudbuild.yaml `
             --project $config.Project `
             --region $config.Region `
-            --substitutions "_IMAGE=$imageTag,_NEXT_PUBLIC_API_URL=$($config.BackendUrl)/api" 2>&1
+            --quiet `
+            --substitutions "_IMAGE=$imageTag,_NEXT_PUBLIC_API_URL=$backendApiUrl" 2>&1
         $buildExitCode = $LASTEXITCODE
         $ErrorActionPreference = $previousErrorActionPreference
 
@@ -115,12 +127,13 @@ try {
             --image $imageTag `
             --region $config.Region `
             --project $config.Project `
+            --quiet `
             --memory $svcConfig.Memory `
             --cpu $svcConfig.Cpu `
             --timeout $svcConfig.Timeout `
             --max-instances $svcConfig.MaxInstances `
             --min-instances $svcConfig.MinInstances `
-            --set-env-vars NODE_ENV=production,HOSTNAME=0.0.0.0,NEXT_PUBLIC_API_URL=$($config.BackendUrl)/api `
+            --set-env-vars NODE_ENV=production,HOSTNAME=0.0.0.0,NEXT_PUBLIC_API_URL=$backendApiUrl `
             --allow-unauthenticated `
             --platform managed 2>&1
         $deployExitCode = $LASTEXITCODE
