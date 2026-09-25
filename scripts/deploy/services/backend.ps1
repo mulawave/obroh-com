@@ -130,7 +130,7 @@ try {
             --max-instances $svcConfig.MaxInstances `
             --min-instances $svcConfig.MinInstances `
             --env-vars-file $deployEnvFile `
-            --set-secrets DATABASE_URL=obroh-database-url:latest `
+            --set-secrets DATABASE_URL=obroh-database-url:latest,JWT_SECRET=JWT_SECRET:latest `
             --add-cloudsql-instances $svcConfig.CloudSqlInstance `
             --allow-unauthenticated `
             --platform managed 2>&1

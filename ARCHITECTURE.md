@@ -90,7 +90,7 @@ app.use(cors({
 - **Token Expiration**: 7 days
 - **Storage** (Web): localStorage with key `auth-token`
 - **Storage** (Mobile): Secure storage (flutter_secure_storage)
-- **Signing Secret**: `JWT_SECRET` (set in environment variables)
+- **Signing Secret**: `JWT_SECRET`, from Secret Manager secret `JWT_SECRET` in production. The backend refuses to start in production without it (`backend/src/lib/jwtSecret.ts`).
 
 ### Cookie Usage
 
@@ -119,8 +119,8 @@ app.use(cors({
 WEBSITE_URL: https://obroh.com
 ADMIN_URL: https://admin.obroh.com
 ALLOWED_ORIGINS: "https://obroh.web.app,https://obroh-website-zoeqld5lsa-uc.a.run.app,..."
-JWT_SECRET: obroh-dynasty-secret-key-2024-dev
 JWT_EXPIRES_IN: 7d
+# JWT_SECRET and DATABASE_URL come from Secret Manager (--set-secrets), never this file
 ```
 
 **Website** (`.env.local`):

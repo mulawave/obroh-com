@@ -8,7 +8,7 @@
     },
     {
       "path": "scripts/deploy/services/backend.ps1",
-      "sha256": "21efe874c0113bc3569d4b9c2d1f5a2ea318242bc608a3942c09c382129c7189"
+      "sha256": "1c7a872037b42bfc84614e343f5efd1028a0dddef7472c0736540797c0b03cba"
     },
     {
       "path": "scripts/deploy/services/website.ps1",

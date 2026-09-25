@@ -6,9 +6,9 @@ import prisma from "../lib/prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { createRefreshToken, verifyRefreshToken, revokeRefreshToken } from "../lib/refreshTokens";
 import { Prisma } from "@prisma/client";
+import { JWT_SECRET } from "../lib/jwtSecret";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "obroh-dynasty-secret-key-2024-dev";
 
 function signToken(userId: string) {
   const options: SignOptions = { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as SignOptions["expiresIn"] };
