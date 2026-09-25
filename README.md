@@ -39,7 +39,7 @@ npm run dev             # → http://localhost:5000
 ### Mobile App
 ```bash
 cd app
-flutter create .
+flutter create --platforms=android .   # Android-only; do not generate ios/
 flutter run
 ```
 
@@ -64,7 +64,7 @@ This command runs `scripts/deploy/deploy.ps1`, which is now the single source of
 | Website    | Next.js 16, TailwindCSS v4, Framer Motion |
 | Admin      | Next.js 16, TailwindCSS v4, Lucide Icons  |
 | Backend    | Node.js, Express, MongoDB, JWT             |
-| Mobile     | Flutter (Dart)                             |
+| Mobile     | Flutter (Dart), Android only               |
 
 ## Theme
 
