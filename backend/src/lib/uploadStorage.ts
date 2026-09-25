@@ -75,6 +75,8 @@ export function createMemoryUpload(options: UploadOptions) {
   });
 }
 
+const UPLOAD_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
 export function buildStoredObjectPath(folder: string, filename: string) {
   return `${folder.replace(/^\/+|\/+$/g, "")}/${filename}`;
 }
@@ -101,7 +103,7 @@ export async function saveUploadedFile(file: Express.Multer.File, objectPath: st
       resumable: false,
       metadata: {
         contentType: file.mimetype,
-        cacheControl: "public, max-age=3600",
+        cacheControl: UPLOAD_CACHE_CONTROL,
       },
     });
     return buildUploadUrl(normalized);
@@ -128,30 +130,33 @@ export async function streamUploadedFile(req: Request, res: Response, next: Next
     return;
   }
 
+  // getMetadata doubles as the existence check: one Storage call per request instead of two.
+  const loadMetadata = async (objectPath: string) => {
+    const target = bucket.file(objectPath);
+    try {
+      const [metadata] = await target.getMetadata();
+      return { objectPath, target, metadata };
+    } catch (error) {
+      if ((error as { code?: number }).code === 404) return null;
+      throw error;
+    }
+  };
+
   try {
-    let objectPath = normalized;
-    let target = bucket.file(objectPath);
-    let [exists] = await target.exists();
+    let found = await loadMetadata(normalized);
 
     // Backward-compatibility: older objects may have been stored as uploads/<path>.
-    if (!exists && !objectPath.startsWith("uploads/")) {
-      const legacyPath = `uploads/${objectPath}`;
-      const legacyTarget = bucket.file(legacyPath);
-      const [legacyExists] = await legacyTarget.exists();
-      if (legacyExists) {
-        objectPath = legacyPath;
-        target = legacyTarget;
-        exists = true;
-      }
+    if (!found && !normalized.startsWith("uploads/")) {
+      found = await loadMetadata(`uploads/${normalized}`);
     }
 
-    if (!exists) {
+    if (!found) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-  const [metadata] = await target.getMetadata();
-  const inferredContentType = inferContentTypeFromPath(objectPath);
+    const { objectPath, target, metadata } = found;
+    const inferredContentType = inferContentTypeFromPath(objectPath);
     const contentType = metadata.contentType && metadata.contentType !== "application/octet-stream"
       ? metadata.contentType
       : inferredContentType;
@@ -160,7 +165,10 @@ export async function streamUploadedFile(req: Request, res: Response, next: Next
       res.setHeader("Content-Type", contentType);
       res.setHeader("Content-Disposition", "inline");
     }
-    res.setHeader("Cache-Control", metadata.cacheControl ?? "public, max-age=3600");
+    // Object names are unique per upload (createObjectName), so content never changes:
+    // let browsers and the Firebase CDN keep it, instead of re-running Cloud Run per view.
+    // Ignores older objects' stored 1-hour metadata on purpose.
+    res.setHeader("Cache-Control", UPLOAD_CACHE_CONTROL);
     res.setHeader("Accept-Ranges", "bytes");
 
     target.createReadStream().on("error", next).pipe(res);

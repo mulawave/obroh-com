@@ -74,7 +74,11 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(morgan("dev"));
+// Cloud Run already logs every request; in production only add lines for failures
+// to keep Cloud Logging volume (shared project quota) down.
+app.use(process.env.NODE_ENV === "production"
+  ? morgan("tiny", { skip: (_req, res) => res.statusCode < 400 })
+  : morgan("dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
