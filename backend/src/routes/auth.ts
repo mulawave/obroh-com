@@ -206,32 +206,37 @@ router.post("/logout", authenticate as any, async (req: AuthRequest, res) => {
 
 // GET /api/auth/me
 router.get("/me", authenticate as any, async (req: AuthRequest, res) => {
-  const u = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    include: { 
-      badges: { select: { label: true, icon: true } },
-      branch: { select: { id: true, name: true } },
-    },
-  });
-  if (!u) { res.status(401).json({ error: "User not found" }); return; }
-  res.json({
-    user: {
-      id: u.id,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      email: u.email,
-      role: u.role,
-      status: u.status,
-      profileImage: u.profileImage,
-      bio: u.bio,
-      username: u.username,
-      phone: u.phone,
-      location: u.location,
-      branchId: u.branchId,
-      branch: u.branch,
-      badges: u.badges,
-    },
-  });
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      include: {
+        badges: { select: { label: true, icon: true } },
+        branch: { select: { id: true, name: true } },
+      },
+    });
+    if (!u) { res.status(401).json({ error: "User not found" }); return; }
+    res.json({
+      user: {
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        role: u.role,
+        status: u.status,
+        profileImage: u.profileImage,
+        bio: u.bio,
+        username: u.username,
+        phone: u.phone,
+        location: u.location,
+        branchId: u.branchId,
+        branch: u.branch,
+        badges: u.badges,
+      },
+    });
+  } catch (err) {
+    console.error("/auth/me error:", err);
+    res.status(500).json({ error: "Failed to load user" });
+  }
 });
 
 export default router;

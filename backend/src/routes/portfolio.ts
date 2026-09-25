@@ -516,8 +516,8 @@ router.delete("/projects/:id/images/:imageId", ...auth, async (req: AuthRequest,
 // GET /portfolio/public/:slug — public portfolio view
 router.get("/public/:slug", async (req, res) => {
   try {
-    const portfolio = await prisma.portfolio.findUnique({
-      where: { slug: req.params.slug, isPublic: true },
+    const portfolio = await prisma.portfolio.findFirst({
+      where: { slug: String(req.params.slug), isPublic: true },
       include: {
         user: { select: { firstName: true, lastName: true, profileImage: true, bio: true, email: true, phone: true, profile: { select: { stateOfOrigin: true, localGovernment: true, dateOfBirth: true, gender: true } } } },
         galleryImages: { orderBy: { sortOrder: "asc" } },
@@ -534,6 +534,7 @@ router.get("/public/:slug", async (req, res) => {
     });
     res.json({ ...normalizePortfolioForResponse(portfolio), books });
   } catch (err) {
+    console.error("Public portfolio error:", err);
     res.status(500).json({ error: "Failed to fetch portfolio" });
   }
 });
@@ -541,8 +542,8 @@ router.get("/public/:slug", async (req, res) => {
 // GET /portfolio/public/resume/:slug — public resume view
 router.get("/public/resume/:slug", async (req, res) => {
   try {
-    const portfolio = await prisma.portfolio.findUnique({
-      where: { slug: req.params.slug, isPublic: true },
+    const portfolio = await prisma.portfolio.findFirst({
+      where: { slug: String(req.params.slug), isPublic: true },
       include: {
         user: { select: { firstName: true, lastName: true, profileImage: true, bio: true, email: true, phone: true, profile: { select: { stateOfOrigin: true, localGovernment: true, dateOfBirth: true, gender: true } } } },
         skills: { orderBy: { sortOrder: "asc" } },
@@ -554,6 +555,7 @@ router.get("/public/resume/:slug", async (req, res) => {
     if (!portfolio) { res.status(404).json({ error: "Portfolio not found" }); return; }
     res.json(normalizePortfolioForResponse(portfolio));
   } catch (err) {
+    console.error("Public resume error:", err);
     res.status(500).json({ error: "Failed to fetch resume" });
   }
 });

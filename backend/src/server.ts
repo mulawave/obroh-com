@@ -1,3 +1,4 @@
+import "./lib/asyncErrors";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -121,10 +122,25 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Endpoint not found" });
 });
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+// Error handler. CORS headers are already set by the cors() middleware above,
+// which runs before every route. Async route errors reach here via lib/asyncErrors.
+app.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Unhandled error:", err);
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
   res.status(500).json({ error: "Internal server error" });
+});
+
+// Backstop for rejections outside the request cycle (timers, fire-and-forget calls).
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+// State is unknown after a synchronous crash: log and exit so Cloud Run restarts cleanly.
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+  process.exit(1);
 });
 
 // Start server
