@@ -31,8 +31,10 @@ function Get-DeploymentConfig {
             MaxInstances       = '20'
             MinInstances       = '0'
             AllowUnauthenticated = $true
+            # Shared with Ruby Brain until Obroh gets its own instance
+            CloudSqlInstance   = 'raven-ai-6ff76:europe-west1:ruby-brain-db'
         }
-        
+
         Admin = @{
             Name               = 'obroh-admin'
             ServiceName        = 'obroh-admin'

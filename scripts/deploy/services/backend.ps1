@@ -131,6 +131,7 @@ try {
             --min-instances $svcConfig.MinInstances `
             --env-vars-file $deployEnvFile `
             --set-secrets DATABASE_URL=obroh-database-url:latest `
+            --add-cloudsql-instances $svcConfig.CloudSqlInstance `
             --allow-unauthenticated `
             --platform managed 2>&1
         $deployExitCode = $LASTEXITCODE

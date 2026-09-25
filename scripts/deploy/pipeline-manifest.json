@@ -8,19 +8,19 @@
     },
     {
       "path": "scripts/deploy/services/backend.ps1",
-      "sha256": "ac0c43f2dfc8c739a8889843dc0643b928e7e2e4a8e72381f21e8bcb4f2ed10b"
+      "sha256": "21efe874c0113bc3569d4b9c2d1f5a2ea318242bc608a3942c09c382129c7189"
     },
     {
       "path": "scripts/deploy/services/website.ps1",
-      "sha256": "dd9b5a60efa7b902076f0b0b9837dd0e190295675fdf70f51131436db2718fa5"
+      "sha256": "f7be4305648861e8455a3b1a426236d317b40b443b97e30e34a2d6f811a0f37f"
     },
     {
       "path": "scripts/deploy/services/admin.ps1",
-      "sha256": "6289bbbacbdeebed20740422adaec6d751a502c09fcb4a785d2c7c8d910ab020"
+      "sha256": "4c34f5891528009a37b5135caa6ed127821acc1f1765dfa0f74d8c40bd50084b"
     },
     {
       "path": "scripts/deploy/utils/config.ps1",
-      "sha256": "5e5f4a84d8d72f78354d4379c8721f48baea682e612717b006e61a0b35eac8aa"
+      "sha256": "5d12618be3f4707352ff32ebb866783f374b044a2b4d59c397f1e6b48132b943"
     },
     {
       "path": "scripts/deploy/utils/validation.ps1",

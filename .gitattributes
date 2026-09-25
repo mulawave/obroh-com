@@ -1,0 +1,4 @@
+# Deploy pipeline files are hash-locked in scripts/deploy/pipeline-manifest.json.
+# Pin their line endings so the hashes match on every OS, whatever core.autocrlf says.
+scripts/deploy/**/*.ps1 text eol=crlf
+backend/cloudbuild.yaml text eol=crlf
