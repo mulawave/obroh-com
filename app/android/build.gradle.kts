@@ -2,6 +2,8 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // Fallback mirror for intermittent TLS/network issues with Maven Central.
+        maven(url = "https://maven-central.storage-download.googleapis.com/maven2/")
     }
     dependencies {
         classpath("com.google.gms:google-services:4.4.2")
@@ -12,6 +14,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Fallback mirror for intermittent TLS/network issues with Maven Central.
+        maven(url = "https://maven-central.storage-download.googleapis.com/maven2/")
     }
 }
 

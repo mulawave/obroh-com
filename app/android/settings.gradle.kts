@@ -13,6 +13,8 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        // Fallback mirror for intermittent TLS/network issues with Maven Central.
+        maven(url = "https://maven-central.storage-download.googleapis.com/maven2/")
         gradlePluginPortal()
     }
 }
